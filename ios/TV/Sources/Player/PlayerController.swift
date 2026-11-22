@@ -47,6 +47,7 @@ final class PlayerController: NSObject, ObservableObject {
     @Published private(set) var pipActive = false
     @Published var fill = false { didSet { applyFill() } }
     @Published var toast: String?
+    @Published var showChannelList = false
 
     weak var store: TVStore?
     private(set) var queue: [Channel] = []
@@ -143,6 +144,12 @@ final class PlayerController: NSObject, ObservableObject {
         }
     }
 
+    /// Switches to another channel live (from the channel list over the video).
+    func play(_ c: Channel) {
+        archiveStart = nil
+        start(c, urlString: c.url)
+    }
+
     func step(_ delta: Int) {
         guard let c = channel, !queue.isEmpty else { return }
         let i = queue.firstIndex { $0.id == c.id } ?? 0
@@ -198,6 +205,7 @@ final class PlayerController: NSObject, ObservableObject {
         channel = nil
         archiveStart = nil
         failure = nil
+        showChannelList = false
         isPresented = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         DispatchQueue.global(qos: .utility).async {
