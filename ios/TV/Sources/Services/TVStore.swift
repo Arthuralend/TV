@@ -1,8 +1,10 @@
 import Foundation
 import SwiftUI
 
-enum EPGStatus: Equatable {
-    case idle, loading, failed
+enum EPGStatus: Equatable, Sendable {
+    case idle, downloading, processing, failed
+
+    var isBusy: Bool { self == .downloading || self == .processing }
 }
 
 @MainActor
@@ -203,10 +205,14 @@ final class TVStore: ObservableObject {
         // 2) refresh in the background when it is older than 8 hours (or missing)
         if let savedAt, Date().timeIntervalSince(savedAt) < 8 * 3600 { return }
         guard !sources.isEmpty else { return }
-        epgStatus = .loading
+        epgStatus = .downloading
         let list = channels, ua = p.userAgent, id = p.id
         do {
-            try await epg.refresh(from: sources, userAgent: ua, channels: list, playlist: id)
+            try await epg.refresh(from: sources, userAgent: ua, channels: list, playlist: id) { stage in
+                Task { @MainActor [weak self] in
+                    if self?.epgStatus.isBusy == true { self?.epgStatus = stage }
+                }
+            }
             guard selectedPlaylistID == id else { return }
             epgStatus = .idle
             epgVersion += 1

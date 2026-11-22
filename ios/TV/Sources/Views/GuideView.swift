@@ -55,10 +55,11 @@ struct GuideView: View {
             }
             VStack(spacing: 0) {
                 ChipBar(items: slots, selection: $slot) { $0.title }
-                if store.epgStatus == .loading && rows.isEmpty {
+                if store.epgStatus.isBusy && rows.isEmpty {
                     VStack(spacing: 12) {
                         ProgressView()
-                        Text("Loading the TV guide…").foregroundStyle(.secondary)
+                        (store.epgStatus == .processing ? Text("Processing the TV guide…") : Text("Downloading the TV guide…"))
+                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if rows.isEmpty {

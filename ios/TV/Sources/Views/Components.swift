@@ -153,6 +153,14 @@ struct StatusBanner: View {
             }
             .padding(.horizontal).padding(.vertical, 8)
             .background(Theme.card)
+        } else if store.epgStatus.isBusy && store.epg.byChannel.isEmpty {
+            HStack(spacing: 10) {
+                ProgressView()
+                (store.epgStatus == .processing ? Text("Processing the TV guide…") : Text("Downloading the TV guide…")).font(.footnote)
+                Spacer()
+            }
+            .padding(.horizontal).padding(.vertical, 8)
+            .background(Theme.card)
         } else if let error = store.errorMessage {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)

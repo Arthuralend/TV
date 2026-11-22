@@ -50,8 +50,12 @@ struct SettingsView: View {
                         Text("Updated")
                         Spacer()
                         switch store.epgStatus {
-                        case .loading:
+                        case .downloading:
                             ProgressView()
+                            Text("Downloading…").foregroundStyle(.secondary)
+                        case .processing:
+                            ProgressView()
+                            Text("Processing…").foregroundStyle(.secondary)
                         case .failed:
                             Text("Failed").foregroundStyle(.red)
                         case .idle:
@@ -63,7 +67,7 @@ struct SettingsView: View {
                         }
                     }
                     Button("Update TV Guide Now") { store.reloadGuide() }
-                        .disabled(store.selectedPlaylist == nil || store.epgStatus == .loading)
+                        .disabled(store.selectedPlaylist == nil || store.epgStatus.isBusy)
                 } header: {
                     Text("TV Guide")
                 } footer: {

@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 /// TV guide (XMLTV, .xml or .xml.gz). Channels are matched by tvg-id or by normalized name,
@@ -48,10 +49,11 @@ final class EPGService {
     }
 
     /// Downloads and parses the guide, keeps only this playlist's channels and saves them compactly.
-    func refresh(from sources: [String], userAgent: String?, channels: [Channel], playlist: UUID) async throws {
-        let wanted = EPGWanted(channels)
-        let data = try await Task.detached(priority: .utility) {
-            try await EPGLoader.load(sources: sources, userAgent: userAgent, wanted: wanted)
+    func refresh(from sources: [String], userAgent: String?, channels: [Channel], playlist: UUID,
+                 stage: @escaping @Sendable (EPGStatus) -> Void) async throws {
+        let data = try await Task.detached(priority: .userInitiated) {
+            let wanted = EPGWanted(channels)
+            return try await EPGLoader.load(sources: sources, userAgent: userAgent, wanted: wanted, stage: stage)
         }.value
         let from = Date().addingTimeInterval(-7 * 86400), to = Date().addingTimeInterval(3 * 86400)
         var map: [String: [Programme]] = [:]
@@ -146,12 +148,15 @@ enum EPGLoader {
     }
 
     /// Loads the first source that works.
-    static func load(sources: [String], userAgent: String?, wanted: EPGWanted) async throws -> EPGData {
+    static func load(sources: [String], userAgent: String?, wanted: EPGWanted,
+                     stage: @escaping @Sendable (EPGStatus) -> Void) async throws -> EPGData {
         var lastError: Error = URLError(.badURL)
         for s in sources {
             do {
+                stage(.downloading)
                 let file = try await xmlFile(for: s, userAgent: userAgent)
-                let data = XMLTVParser(wanted: wanted).parse(file)
+                stage(.processing)
+                let data = XMLTVScanner(wanted: wanted).scan(file)
                 if !data.programmes.isEmpty { return data }
                 lastError = URLError(.cannotParseResponse)
             } catch {
@@ -171,7 +176,7 @@ enum EPGLoader {
            Date().timeIntervalSince(m) < 8 * 3600 {
             return xml
         }
-        var req = URLRequest(url: url, timeoutInterval: 180)
+        var req = URLRequest(url: url, timeoutInterval: 30)   // idle timeout: a dead server is skipped quickly
         req.setValue(userAgent?.isEmpty == false ? userAgent! : "Mozilla/5.0", forHTTPHeaderField: "User-Agent")
         let (tmp, resp) = try await URLSession.shared.download(for: req)
         if let h = resp as? HTTPURLResponse, !(200..<300).contains(h.statusCode) {
@@ -192,62 +197,261 @@ enum EPGLoader {
     }
 }
 
-private final class XMLTVParser: NSObject, XMLParserDelegate {
-    private let wanted: EPGWanted
+/// Fast XMLTV reader. Scans the memory-mapped file byte by byte and jumps over the programmes
+/// of channels that are not in the playlist (most of a big guide), instead of running a full XML parser.
+private struct XMLTVScanner {
+    let wanted: EPGWanted
+
+    func scan(_ file: URL) -> EPGData {
+        guard let d = try? Data(contentsOf: file, options: .alwaysMapped), !d.isEmpty else { return EPGData() }
+        return d.withUnsafeBytes { raw -> EPGData in
+            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return EPGData() }
+            var s = ByteScan(p: base, n: raw.count, wanted: wanted)
+            s.run()
+            return s.result()
+        }
+    }
+}
+
+private struct ByteScan {
+    let p: UnsafePointer<UInt8>
+    let n: Int
+    let wanted: EPGWanted
+
     private var data = EPGData()
     private var channelNames: [String: [String]] = [:]
     private var channelIcon: [String: String] = [:]
     private var decided: [String: Bool] = [:]
-    private var currentChannelId: String?
-    private var progChannel: String?
-    private var progStart: Date?
-    private var progStop: Date?
-    private var title = ""
-    private var desc = ""
-    private var text = ""
-    private var capture = false
-    private let windowStart = Date().addingTimeInterval(-7 * 86400)   // archive up to a week back
-    private let windowEnd = Date().addingTimeInterval(3 * 86400)
+    private var lastIdStart = 0, lastIdLen = 0, lastId = "", lastWanted = false
+    private let windowStart = Date().addingTimeInterval(-7 * 86400).timeIntervalSince1970
+    private let windowEnd = Date().addingTimeInterval(3 * 86400).timeIntervalSince1970
 
-    init(wanted: EPGWanted) { self.wanted = wanted }
-
-    private static let formatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyyMMddHHmmss Z"
-        return f
-    }()
-    private static let formatterNoTZ: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyyMMddHHmmss"
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f
-    }()
-
-    static func date(_ s: String?) -> Date? {
-        guard let s = s?.trimmingCharacters(in: .whitespaces), !s.isEmpty else { return nil }
-        return formatter.date(from: s) ?? formatterNoTZ.date(from: String(s.prefix(14)))
+    init(p: UnsafePointer<UInt8>, n: Int, wanted: EPGWanted) {
+        self.p = p
+        self.n = n
+        self.wanted = wanted
     }
 
-    func parse(_ file: URL) -> EPGData {
-        guard let stream = InputStream(url: file) else { return data }
-        let p = XMLParser(stream: stream)
-        p.delegate = self
-        p.parse()
-        for k in data.programmes.keys { data.programmes[k]?.sort { $0.start < $1.start } }
-        for (id, names) in channelNames where isWanted(id) {
-            data.idByLower[id.lowercased()] = id
-            for n in names {
-                for k in LogoDatabase.keys(n) where data.idByName[k] == nil { data.idByName[k] = id }
-            }
-            if let ic = channelIcon[id] { data.iconById[id] = ic }
+    private static func bytes(_ s: String) -> [UInt8] { Array(s.utf8) }
+    private static let channelTag = bytes("channel")
+    private static let programmeTag = bytes("programme")
+    private static let channelClose = bytes("</channel>")
+    private static let programmeClose = bytes("</programme>")
+    private static let displayOpen = bytes("<display-name")
+    private static let displayClose = bytes("</display-name>")
+    private static let iconOpen = bytes("<icon")
+    private static let titleOpen = bytes("<title")
+    private static let titleClose = bytes("</title>")
+    private static let descOpen = bytes("<desc")
+    private static let descClose = bytes("</desc>")
+    private static let idAttr = bytes("id=")
+    private static let channelAttr = bytes("channel=")
+    private static let startAttr = bytes("start=")
+    private static let stopAttr = bytes("stop=")
+    private static let srcAttr = bytes("src=")
+    private static let cdataOpen = bytes("<![CDATA[")
+
+    // MARK: byte helpers
+
+    private func indexOf(_ byte: UInt8, _ from: Int, _ end: Int) -> Int? {
+        guard from < end, let q = memchr(p + from, Int32(byte), end - from) else { return nil }
+        return UnsafePointer<UInt8>(q.assumingMemoryBound(to: UInt8.self)) - p
+    }
+
+    private func find(_ pat: [UInt8], _ from: Int, _ end: Int) -> Int? {
+        let m = pat.count
+        var i = from
+        while i <= end - m {
+            guard let j = indexOf(pat[0], i, end - m + 1) else { return nil }
+            if memcmp(p + j, pat, m) == 0 { return j }
+            i = j + 1
         }
-        for id in data.programmes.keys where data.idByLower[id.lowercased()] == nil { data.idByLower[id.lowercased()] = id }
-        return data
+        return nil
     }
 
-    private func isWanted(_ id: String) -> Bool {
+    private func matches(_ pat: [UInt8], at i: Int) -> Bool {
+        i + pat.count <= n && memcmp(p + i, pat, pat.count) == 0
+    }
+
+    private func isSpace(_ b: UInt8) -> Bool { b == 32 || b == 9 || b == 10 || b == 13 }
+
+    /// Value range of `name="…"` (or single quotes) inside a tag.
+    private func attr(_ name: [UInt8], _ from: Int, _ end: Int) -> (Int, Int)? {
+        var i = from
+        while let a = find(name, i, end) {
+            let q = a + name.count
+            if a > from, isSpace(p[a - 1]), q < end, p[q] == 34 || p[q] == 39,
+               let close = indexOf(p[q], q + 1, end) {
+                return (q + 1, close)
+            }
+            i = a + 1
+        }
+        return nil
+    }
+
+    private func string(_ a: Int, _ b: Int) -> String {
+        guard b > a else { return "" }
+        var s = a, e = b
+        if matches(Self.cdataOpen, at: s), e - s >= 12, p[e - 1] == 62, p[e - 2] == 93, p[e - 3] == 93 {
+            s += Self.cdataOpen.count
+            e -= 3
+        }
+        while s < e, isSpace(p[s]) { s += 1 }
+        while e > s, isSpace(p[e - 1]) { e -= 1 }
+        let str = String(decoding: UnsafeBufferPointer(start: p + s, count: e - s), as: UTF8.self)
+        return str.contains("&") ? Self.decodeEntities(str) : str
+    }
+
+    private static func decodeEntities(_ s: String) -> String {
+        var out = ""
+        out.reserveCapacity(s.utf8.count)
+        var i = s.startIndex
+        while i < s.endIndex {
+            let c = s[i]
+            if c == "&", let semi = s[i...].prefix(12).firstIndex(of: ";") {
+                let ent = s[s.index(after: i)..<semi]
+                var rep: String?
+                switch ent {
+                case "amp": rep = "&"
+                case "lt": rep = "<"
+                case "gt": rep = ">"
+                case "quot": rep = "\""
+                case "apos": rep = "'"
+                case "nbsp": rep = "\u{00A0}"
+                default:
+                    var v: UInt32?
+                    if ent.hasPrefix("#x") || ent.hasPrefix("#X") { v = UInt32(ent.dropFirst(2), radix: 16) }
+                    else if ent.hasPrefix("#") { v = UInt32(ent.dropFirst()) }
+                    if let v, let u = Unicode.Scalar(v) { rep = String(Character(u)) }
+                }
+                if let rep {
+                    out += rep
+                    i = s.index(after: semi)
+                    continue
+                }
+            }
+            out.append(c)
+            i = s.index(after: i)
+        }
+        return out
+    }
+
+    /// "20261122183000 +0300" -> seconds since 1970 (no time zone = UTC).
+    private func date(_ a: Int, _ b: Int) -> TimeInterval? {
+        func num(_ i: Int, _ len: Int) -> Int? {
+            guard i + len <= b else { return nil }
+            var v = 0
+            for k in i..<(i + len) {
+                let c = Int(p[k]) - 48
+                guard c >= 0 && c <= 9 else { return nil }
+                v = v * 10 + c
+            }
+            return v
+        }
+        guard let y = num(a, 4), let mo = num(a + 4, 2), let d = num(a + 6, 2),
+              let h = num(a + 8, 2), let mi = num(a + 10, 2) else { return nil }
+        var i = a + 12
+        var sec = 0
+        if let s = num(i, 2) { sec = s; i += 2 }
+        while i < b, isSpace(p[i]) { i += 1 }
+        var offset = 0
+        if i < b, p[i] == 43 || p[i] == 45, let oh = num(i + 1, 2), let om = num(i + 3, 2) {
+            offset = (oh * 3600 + om * 60) * (p[i] == 45 ? -1 : 1)
+        }
+        let days = Self.daysFromCivil(y, mo, d)
+        return TimeInterval(days * 86400 + h * 3600 + mi * 60 + sec - offset)
+    }
+
+    private static func daysFromCivil(_ y0: Int, _ m: Int, _ d: Int) -> Int {
+        let y = m <= 2 ? y0 - 1 : y0
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yoe = y - era * 400
+        let doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        return era * 146097 + doe - 719468
+    }
+
+    // MARK: scanning
+
+    mutating func run() {
+        var i = 0
+        while i < n {
+            guard let lt = indexOf(60, i, n) else { break }      // "<"
+            let after = lt + 1
+            if matches(Self.programmeTag, at: after), after + 9 < n, isSpace(p[after + 9]) {
+                i = programme(at: lt)
+            } else if matches(Self.channelTag, at: after), after + 7 < n, isSpace(p[after + 7]) || p[after + 7] == 62 {
+                i = channel(at: lt)
+            } else {
+                i = after
+            }
+        }
+    }
+
+    private mutating func channel(at lt: Int) -> Int {
+        guard let te = indexOf(62, lt, n) else { return n }
+        let id = attr(Self.idAttr, lt, te).map { string($0.0, $0.1) } ?? ""
+        if p[te - 1] == 47 { return te + 1 }                    // <channel …/>
+        let end = find(Self.channelClose, te, n) ?? n
+        var names: [String] = []
+        var k = te + 1
+        while let a = find(Self.displayOpen, k, end), let ate = indexOf(62, a, end) {
+            let ce = find(Self.displayClose, ate, end) ?? end
+            let name = string(ate + 1, ce)
+            if !name.isEmpty { names.append(name) }
+            k = ce + 1
+        }
+        if !id.isEmpty {
+            channelNames[id, default: []] += names
+            if channelIcon[id] == nil, let ic = find(Self.iconOpen, te, end), let ite = indexOf(62, ic, end),
+               let src = attr(Self.srcAttr, ic, ite) {
+                let u = string(src.0, src.1)
+                if !u.isEmpty { channelIcon[id] = u }
+            }
+        }
+        return min(n, end + Self.channelClose.count)
+    }
+
+    private mutating func programme(at lt: Int) -> Int {
+        guard let te = indexOf(62, lt, n) else { return n }
+        let selfClosing = p[te - 1] == 47
+        let blockEnd = selfClosing ? te : (find(Self.programmeClose, te, n) ?? n)
+        let next = selfClosing ? te + 1 : min(n, blockEnd + Self.programmeClose.count)
+        guard !selfClosing, let ch = attr(Self.channelAttr, lt, te) else { return next }
+
+        // programmes come grouped by channel: compare bytes before making a String
+        let len = ch.1 - ch.0
+        let id: String
+        let ok: Bool
+        if len == lastIdLen, len > 0, memcmp(p + ch.0, p + lastIdStart, len) == 0 {
+            id = lastId
+            ok = lastWanted
+        } else {
+            id = string(ch.0, ch.1)
+            ok = isWanted(id)
+            lastIdStart = ch.0; lastIdLen = len; lastId = id; lastWanted = ok
+        }
+        guard ok,
+              let sr = attr(Self.startAttr, lt, te), let start = date(sr.0, sr.1),
+              let er = attr(Self.stopAttr, lt, te), let stop = date(er.0, er.1),
+              stop > windowStart, start < windowEnd else { return next }
+
+        var title = ""
+        if let t = find(Self.titleOpen, te, blockEnd), let tte = indexOf(62, t, blockEnd) {
+            title = string(tte + 1, find(Self.titleClose, tte, blockEnd) ?? blockEnd)
+        }
+        var desc: String?
+        if let t = find(Self.descOpen, te, blockEnd), let tte = indexOf(62, t, blockEnd) {
+            let d = string(tte + 1, find(Self.descClose, tte, blockEnd) ?? blockEnd)
+            if !d.isEmpty { desc = d }
+        }
+        data.programmes[id, default: []].append(Programme(start: Date(timeIntervalSince1970: start),
+                                                          stop: Date(timeIntervalSince1970: stop),
+                                                          title: title, desc: desc))
+        return next
+    }
+
+    private mutating func isWanted(_ id: String) -> Bool {
         if let d = decided[id] { return d }
         var ok = wanted.ids.contains(id.lowercased())
         if !ok, let names = channelNames[id] {
@@ -257,53 +461,16 @@ private final class XMLTVParser: NSObject, XMLParserDelegate {
         return ok
     }
 
-    func parser(_ parser: XMLParser, didStartElement el: String, namespaceURI: String?,
-                qualifiedName: String?, attributes a: [String: String] = [:]) {
-        switch el {
-        case "channel":
-            currentChannelId = a["id"]
-        case "display-name":
-            capture = currentChannelId != nil; text = ""
-        case "icon":
-            if let id = currentChannelId, let src = a["src"], !src.isEmpty, channelIcon[id] == nil { channelIcon[id] = src }
-        case "programme":
-            progChannel = nil
-            if let ch = a["channel"], isWanted(ch),
-               let s = Self.date(a["start"]), let e = Self.date(a["stop"]), e > windowStart, s < windowEnd {
-                progChannel = ch; progStart = s; progStop = e
-                title = ""; desc = ""
+    mutating func result() -> EPGData {
+        for k in data.programmes.keys { data.programmes[k]?.sort { $0.start < $1.start } }
+        for (id, names) in channelNames where isWanted(id) {
+            data.idByLower[id.lowercased()] = id
+            for name in names {
+                for k in LogoDatabase.keys(name) where data.idByName[k] == nil { data.idByName[k] = id }
             }
-        case "title", "desc":
-            capture = progChannel != nil; text = ""
-        default:
-            break
+            if let ic = channelIcon[id] { data.iconById[id] = ic }
         }
-    }
-
-    func parser(_ parser: XMLParser, foundCharacters string: String) {
-        if capture { text += string }
-    }
-
-    func parser(_ parser: XMLParser, didEndElement el: String, namespaceURI: String?, qualifiedName: String?) {
-        switch el {
-        case "display-name":
-            let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let id = currentChannelId, !t.isEmpty { channelNames[id, default: []].append(t) }
-        case "channel":
-            currentChannelId = nil
-        case "title":
-            if progChannel != nil, title.isEmpty { title = text.trimmingCharacters(in: .whitespacesAndNewlines) }
-        case "desc":
-            if progChannel != nil, desc.isEmpty { desc = text.trimmingCharacters(in: .whitespacesAndNewlines) }
-        case "programme":
-            if let ch = progChannel, let s = progStart, let e = progStop {
-                data.programmes[ch, default: []].append(Programme(start: s, stop: e, title: title, desc: desc.isEmpty ? nil : desc))
-            }
-            progChannel = nil
-        default:
-            break
-        }
-        capture = false
-        text = ""
+        for id in data.programmes.keys where data.idByLower[id.lowercased()] == nil { data.idByLower[id.lowercased()] = id }
+        return data
     }
 }
