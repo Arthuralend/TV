@@ -3,7 +3,7 @@ name: Build IPTV Pro Max
 on:
   push:
     branches: [main]
-    paths-ignore: ['web/**', 'android/**', '.github/workflows/android.yml']
+    paths-ignore: ['web/**', 'android/**', 'ios/**', 'docs/**', '.github/workflows/android.yml', '.github/workflows/ios.yml']
   workflow_dispatch:
 
 permissions:

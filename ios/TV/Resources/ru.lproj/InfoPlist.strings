@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "TV";
+"CFBundleName" = "TV";
+"NSLocalNetworkUsageDescription" = "TV подключается к IPTV-серверам в вашей локальной сети, чтобы воспроизводить каналы.";

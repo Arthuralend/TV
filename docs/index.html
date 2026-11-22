@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TV — Поддержка / Support</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="logo.png">
+</head>
+<body>
+<main>
+<header>
+  <img src="logo.png" alt="">
+  <div><h1>TV — IPTV &amp; TV Guide</h1><p>Плеер IPTV с телегидом для iPhone</p></div>
+</header>
+<nav>
+  <a class="active" href="./">Поддержка / Support</a>
+  <a href="privacy.html">Конфиденциальность / Privacy</a>
+  <a href="terms.html">Условия / Terms</a>
+  <a href="#english">English</a>
+</nav>
+
+<div class="card">TV — плеер для ваших собственных IPTV-плейлистов. В приложении нет встроенных каналов: плейлист выдаёт ваш IPTV-провайдер.</div>
+
+<h2>Частые вопросы</h2>
+<h3>Как добавить плейлист?</h3>
+<p>Настройки → «Добавить плейлист». Выберите «Ссылка» (M3U/M3U8), «Файл» (из приложения «Файлы») или «Xtream Codes» (сервер, логин и пароль от провайдера). Файл .m3u можно также открыть в TV через меню «Поделиться».</p>
+<h3>Где телепрограмма?</h3>
+<p>Телегид берётся из плейлиста (<code>url-tvg</code>), из ссылки XMLTV в настройках плейлиста или из встроенных общедоступных источников. Поддерживаются файлы <code>.xml</code> и <code>.xml.gz</code>. Каналы сопоставляются по <code>tvg-id</code> и по названию.</p>
+<h3>Канал не воспроизводится</h3>
+<p>На экране ошибки нажмите «Попробовать VLC» или «Системный плеер». В настройках можно выбрать плеер и увеличить буфер VLC. Проверьте, работает ли ссылка у провайдера и не требуется ли особый User-Agent.</p>
+<h3>Архив (catch-up)</h3>
+<p>Если провайдер поддерживает архив (атрибуты <code>catchup</code>, <code>catchup-source</code>, <code>timeshift</code>), прошедшие передачи в телегиде отмечены кнопкой ▶.</p>
+<h3>Картинка в картинке и AirPlay</h3>
+<p>Доступны для HLS-потоков в системном плеере: кнопки в верхней части плеера.</p>
+
+<h2>Связаться</h2>
+<p>Создайте обращение: <a href="https://github.com/Arthuralend/TV/issues">github.com/Arthuralend/TV/issues</a></p>
+
+<hr id="english">
+
+<h1>Support</h1>
+<div class="card">TV is a player for your own IPTV playlists. The app includes no channels: your playlist comes from your IPTV provider.</div>
+<h3>How do I add a playlist?</h3>
+<p>Settings → Add Playlist. Choose Link (M3U/M3U8), File (from the Files app) or Xtream Codes (server, username and password from your provider). You can also open an .m3u file in TV from the Share menu.</p>
+<h3>Where is the TV guide?</h3>
+<p>The guide comes from the playlist (<code>url-tvg</code>), from the XMLTV link in the playlist settings, or from built-in public sources. <code>.xml</code> and <code>.xml.gz</code> are supported. Channels are matched by <code>tvg-id</code> and by name.</p>
+<h3>A channel does not play</h3>
+<p>On the error screen tap “Try VLC” or “Try System Player”. In Settings you can choose the player and increase the VLC buffer. Check that the link works with your provider and whether it needs a specific User-Agent.</p>
+<h3>Archive (catch-up)</h3>
+<p>If your provider supports catch-up (<code>catchup</code>, <code>catchup-source</code>, <code>timeshift</code> attributes), past programmes in the guide show a ▶ button.</p>
+<h3>Picture in Picture and AirPlay</h3>
+<p>Available for HLS streams in the system player: use the buttons at the top of the player.</p>
+<h2>Contact</h2>
+<p>Open an issue: <a href="https://github.com/Arthuralend/TV/issues">github.com/Arthuralend/TV/issues</a></p>
+</main>
+</body>
+</html>

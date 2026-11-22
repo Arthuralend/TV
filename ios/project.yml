@@ -1,0 +1,70 @@
+# iOS app «TV» (App Store: «TV - IPTV & TV Guide»).
+# Generate the Xcode project:  cd ios && xcodegen generate && pod install
+name: TV
+options:
+  bundleIdPrefix: com.arthuralend
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Your Apple Developer Team ID (10 characters), or pass DEVELOPMENT_TEAM=... to xcodebuild
+    DEVELOPMENT_TEAM: ""
+targets:
+  TV:
+    type: application
+    platform: iOS
+    sources:
+      - TV/Sources
+      - TV/Resources
+      - path: ../android/app/src/main/assets/logos.tsv
+        buildPhase: resources
+    info:
+      path: TV/Info.plist
+      properties:
+        CFBundleDisplayName: TV
+        CFBundleName: TV
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [en, ru]
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.entertainment
+        ITSAppUsesNonExemptEncryption: false
+        LSRequiresIPhoneOS: true
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIBackgroundModes: [audio]
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIViewControllerBasedStatusBarAppearance: true
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiredDeviceCapabilities: [arm64]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: TV connects to IPTV servers on your local network to play your channels.
+        LSSupportsOpeningDocumentsInPlace: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: M3U Playlist
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.m3u-playlist]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.arthuralend.tv
+        PRODUCT_NAME: TV
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        ENABLE_BITCODE: NO
+        SWIFT_EMIT_LOC_STRINGS: YES
+        LOCALIZATION_PREFERS_STRING_CATALOGS: NO

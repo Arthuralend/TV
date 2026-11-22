@@ -8,3 +8,4 @@ bin/
 obj/
 out/
 dist/
+ios/TV/Info.plist
