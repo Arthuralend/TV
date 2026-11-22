@@ -53,7 +53,6 @@
 "Leave the guide empty to use the one named in the playlist." = "Оставьте поле пустым, чтобы использовать телегид, указанный в плейлисте.";
 "Link" = "Ссылка";
 "Loading playlist…" = "Загрузка плейлиста…";
-"Loading the TV guide…" = "Загрузка телегида…";
 "Login details from your TV provider. Only live channels are added." = "Данные для входа от вашего провайдера. Добавляются только телеканалы.";
 "Logos & Storage" = "Логотипы и хранилище";
 "M3U / M3U8 link" = "Ссылка M3U / M3U8";
@@ -137,3 +136,7 @@
 "Xtream Codes" = "Xtream Codes";
 "Yesterday" = "Вчера";
 "Your playlist has no TV guide for this time. You can add an XMLTV link in the playlist settings." = "Для этого времени нет телегида. Ссылку на XMLTV можно добавить в настройках плейлиста.";
+"Downloading the TV guide…" = "Скачивание телегида…";
+"Processing the TV guide…" = "Обработка телегида…";
+"Downloading…" = "Скачивание…";
+"Processing…" = "Обработка…";
