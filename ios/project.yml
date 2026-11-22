@@ -13,6 +13,10 @@ settings:
     CURRENT_PROJECT_VERSION: "2"
     # Your Apple Developer Team ID (10 characters), or pass DEVELOPMENT_TEAM=... to xcodebuild
     DEVELOPMENT_TEAM: ""
+packages:
+  MPVKit:
+    url: https://github.com/mpvkit/MPVKit
+    exactVersion: 1.1.0-n9.0.2
 targets:
   TV:
     type: application
@@ -22,6 +26,9 @@ targets:
       - TV/Resources
       - path: ../android/app/src/main/assets/logos.tsv
         buildPhase: resources
+    dependencies:
+      - package: MPVKit
+        product: MPVKit
     info:
       path: TV/Info.plist
       properties:

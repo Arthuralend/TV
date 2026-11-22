@@ -133,8 +133,10 @@ enum Prefs {
     static let useDefaultEPG = "useDefaultEPG"
 
     static func register() {
+        // "auto" from the first test builds -> MPV, the new default
+        if UserDefaults.standard.string(forKey: engine) == "auto" { UserDefaults.standard.set(PlayerEngine.mpv.rawValue, forKey: engine) }
         UserDefaults.standard.register(defaults: [
-            engine: PlayerEngine.auto.rawValue,
+            engine: PlayerEngine.mpv.rawValue,
             networkCaching: 1000,
             useLogoDB: true,
             useDefaultEPG: true,

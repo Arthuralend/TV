@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var store: TVStore
-    @AppStorage(Prefs.engine) private var engine = PlayerEngine.auto.rawValue
+    @AppStorage(Prefs.engine) private var engine = PlayerEngine.mpv.rawValue
     @AppStorage(Prefs.networkCaching) private var networkCaching = 1000
     @AppStorage(Prefs.useLogoDB) private var useLogoDB = true
     @AppStorage(Prefs.useDefaultEPG) private var useDefaultEPG = true
@@ -88,7 +88,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Playback")
                 } footer: {
-                    Text("Automatic uses the system player for HLS (Picture in Picture, AirPlay) and VLC for other stream types.")
+                    Text("MPV is the fastest and most reliable for IPTV, but has no Picture in Picture. The system player supports Picture in Picture and AirPlay but plays only HLS (.m3u8); if it cannot open a channel, MPV is used. VLC is a spare player.")
                 }
 
                 Section {
