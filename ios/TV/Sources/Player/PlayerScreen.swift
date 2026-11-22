@@ -27,8 +27,14 @@ struct PlayerScreen: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                     .zIndex(1)
             }
+            if player.showGroupList {
+                GroupListOverlay(landscape: landscape)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .zIndex(2)
+            }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.9), value: player.showChannelList)
+        .animation(.spring(response: 0.3, dampingFraction: 0.9), value: player.showGroupList)
         .statusBarHidden(landscape)
         .persistentSystemOverlays(landscape ? .hidden : .automatic)
         .preferredColorScheme(.dark)
@@ -76,8 +82,12 @@ struct PlayerScreen: View {
             DragGesture(minimumDistance: 40).onEnded { v in
                 let dx = v.translation.width, dy = v.translation.height
                 if abs(dx) > abs(dy) * 1.5 {
-                    // right-to-left opens the channel list, left-to-right closes it
-                    player.showChannelList = dx < 0
+                    // right-to-left: channels; left-to-right: groups
+                    if dx < 0 {
+                        if player.showGroupList { player.showGroupList = false } else { player.showChannelList = true }
+                    } else {
+                        if player.showChannelList { player.showChannelList = false } else { player.showGroupList = true }
+                    }
                 } else if dy > 120, !landscape {
                     player.close()
                 }
@@ -93,10 +103,10 @@ struct PlayerScreen: View {
             Text(verbatim: message).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             HStack(spacing: 12) {
                 Button("Retry") { player.retry() }.buttonStyle(.borderedProminent)
-                Button {
-                    player.retry(engine: player.active == .vlc ? .system : .vlc)
+                Menu {
+                    EngineButtons()
                 } label: {
-                    player.active == .vlc ? Text("Try System Player") : Text("Try VLC")
+                    Text("Other Player")
                 }
                 .buttonStyle(.bordered)
             }
@@ -131,9 +141,15 @@ struct VideoSurface: UIViewRepresentable {
     func updateUIView(_ v: UIView, context: Context) { attach(to: v) }
 
     private func attach(to v: UIView) {
-        let target: UIView = player.active == .vlc ? player.vlcView : player.avView
-        let other: UIView = player.active == .vlc ? player.avView : player.vlcView
-        if other.superview === v { other.removeFromSuperview() }
+        let target: UIView
+        switch player.active {
+        case .vlc: target = player.vlcView
+        case .system: target = player.avView
+        case .mpv, .none: target = player.mpv.view
+        }
+        for other in [player.vlcView, player.avView, player.mpv.view] where other !== target && other.superview === v {
+            other.removeFromSuperview()
+        }
         if target.superview !== v {
             target.removeFromSuperview()
             target.frame = v.bounds
@@ -225,14 +241,10 @@ private struct PlayerControls: View {
                 .pickerStyle(.menu)
             }
             Toggle(isOn: $player.fill) { Label("Fill Screen", systemImage: "arrow.up.left.and.arrow.down.right") }
-            Button {
-                player.retry(engine: player.active == .vlc ? .system : .vlc)
+            Menu {
+                EngineButtons()
             } label: {
-                if player.active == .vlc {
-                    Label("Play in System Player", systemImage: "arrow.triangle.2.circlepath")
-                } else {
-                    Label("Play in VLC", systemImage: "arrow.triangle.2.circlepath")
-                }
+                Label("Player", systemImage: "arrow.triangle.2.circlepath")
             }
             if let c = player.channel {
                 Button {
@@ -402,7 +414,21 @@ private struct ChannelListOverlay: View {
     private var panel: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Channels").font(.headline)
+                Button {
+                    player.showChannelList = false
+                    player.showGroupList = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left").font(.subheadline.weight(.semibold))
+                        if let t = player.queueTitle {
+                            Text(verbatim: t).font(.headline).lineLimit(1)
+                        } else {
+                            Text("Channels").font(.headline)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Groups"))
                 Spacer()
                 Button {
                     player.showChannelList = false
@@ -473,5 +499,116 @@ private struct ChannelListOverlay: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(Color.white)
+    }
+}
+
+/// Engine choices for the current channel (other than the one playing).
+private struct EngineButtons: View {
+    @EnvironmentObject private var player: PlayerController
+
+    var body: some View {
+        if player.active != .mpv {
+            Button { player.retry(engine: .mpv) } label: { Text("Play in MPV") }
+        }
+        if player.active != .system {
+            Button { player.retry(engine: .system) } label: { Text("Play in System Player") }
+        }
+        if player.active != .vlc {
+            Button { player.retry(engine: .vlc) } label: { Text("Play in VLC") }
+        }
+    }
+}
+
+/// Translucent group list on the left (swipe left-to-right on the video).
+private struct GroupListOverlay: View {
+    let landscape: Bool
+    @EnvironmentObject private var player: PlayerController
+    @EnvironmentObject private var store: TVStore
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                panel.frame(width: min(340, geo.size.width * (landscape ? 0.38 : 0.8)))
+                Color.black.opacity(0.001)
+                    .contentShape(Rectangle())
+                    .onTapGesture { player.showGroupList = false }
+            }
+        }
+        .ignoresSafeArea(edges: landscape ? .all : [])
+        .gesture(
+            DragGesture(minimumDistance: 30).onEnded { v in
+                if v.translation.width < -60, abs(v.translation.width) > abs(v.translation.height) {
+                    player.showGroupList = false
+                }
+            }
+        )
+    }
+
+    private var currentGroup: String? { player.channel?.group }
+
+    private var panel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Groups").font(.headline)
+                Spacer()
+                Button {
+                    player.showGroupList = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill").font(.title2).symbolRenderingMode(.hierarchical)
+                }
+                .accessibilityLabel(Text("Close"))
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, landscape ? 16 : 12)
+            .padding(.bottom, 8)
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    row(nil, title: String(localized: "All Channels"), count: store.channels.count)
+                    let favorites = store.favoriteChannels
+                    if !favorites.isEmpty {
+                        Button {
+                            player.showFavorites(favorites)
+                        } label: {
+                            rowLabel(String(localized: "Favorites"), count: favorites.count, icon: "star.fill", selected: false)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    ForEach(store.groups, id: \.self) { g in
+                        row(g, title: g, count: store.channels(in: g, search: "").count)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 16)
+            }
+        }
+        .background(.ultraThinMaterial)
+        .background(Color.black.opacity(0.35))
+        .environment(\.colorScheme, .dark)
+        .foregroundStyle(Color.white)
+    }
+
+    private func row(_ group: String?, title: String, count: Int) -> some View {
+        Button {
+            player.showGroup(group)
+        } label: {
+            rowLabel(title, count: count, icon: group == nil ? "tv" : "folder", selected: group != nil && group == currentGroup)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func rowLabel(_ title: String, count: Int, icon: String, selected: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).font(.subheadline).foregroundStyle(Theme.orange).frame(width: 22)
+            Text(verbatim: title).font(.subheadline.weight(.semibold)).lineLimit(1)
+            Spacer(minLength: 4)
+            Text(verbatim: "\(count)").font(.caption.monospacedDigit()).foregroundStyle(Color.white.opacity(0.6))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(selected ? Theme.orange.opacity(0.25) : Color.clear)
+        )
+        .contentShape(Rectangle())
     }
 }

@@ -14,7 +14,6 @@
 "Audio Track" = "Аудиодорожка";
 "Auto-update" = "Автообновление";
 "Automatic" = "Автоматически";
-"Automatic uses the system player for HLS (Picture in Picture, AirPlay) and VLC for other stream types." = "В автоматическом режиме HLS воспроизводится системным плеером (картинка в картинке, AirPlay), остальные потоки — через VLC.";
 "Back 30 Seconds" = "Назад на 30 секунд";
 "Back to Live" = "Вернуться в прямой эфир";
 "Built-in guide sources" = "Встроенные источники телегида";
@@ -140,3 +139,11 @@
 "Processing the TV guide…" = "Обработка телегида…";
 "Downloading…" = "Скачивание…";
 "Processing…" = "Обработка…";
+"MPV (recommended)" = "MPV (рекомендуется)";
+"MPV is the fastest and most reliable for IPTV, but has no Picture in Picture. The system player supports Picture in Picture and AirPlay but plays only HLS (.m3u8); if it cannot open a channel, MPV is used. VLC is a spare player." = "MPV — самый быстрый и стабильный для IPTV, но без «картинки в картинке». Системный плеер поддерживает «картинку в картинке» и AirPlay, но играет только HLS (.m3u8); если он не может открыть канал, включается MPV. VLC — запасной плеер.";
+"Play in MPV" = "Открыть в MPV";
+"Other Player" = "Другой плеер";
+"Groups" = "Группы";
+"All Channels" = "Все каналы";
+"Track %lld" = "Дорожка %lld";
+"The broadcast has ended" = "Трансляция завершилась";
