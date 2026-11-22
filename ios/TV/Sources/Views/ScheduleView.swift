@@ -4,7 +4,7 @@ import SwiftUI
 struct ScheduleView: View {
     let channel: Channel
     @EnvironmentObject private var store: TVStore
-    @EnvironmentObject private var player: PlayerController
+    @Environment(\.playerRef) private var player
     @State private var day = Calendar.current.startOfDay(for: Date())
 
     var body: some View {
@@ -19,7 +19,7 @@ struct ScheduleView: View {
                 }
                 Spacer(minLength: 0)
                 Button {
-                    player.open(channel, queue: store.channels(in: channel.group, search: ""))
+                    player?.open(channel, queue: store.channels(in: channel.group, search: ""))
                 } label: {
                     Label("Watch", systemImage: "play.fill").font(.subheadline.weight(.semibold))
                 }
