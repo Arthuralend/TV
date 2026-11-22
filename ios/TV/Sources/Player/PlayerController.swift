@@ -54,14 +54,13 @@ final class PlayerController: NSObject, ObservableObject {
     let avPlayer = AVPlayer()
     let avView = PlayerLayerView()
     let vlcView = UIView()
-    private var vlcCreated = false
-    private lazy var vlc: VLCMediaPlayer = {
-        let p = VLCMediaPlayer()
-        p.drawable = vlcView
-        p.delegate = self
-        vlcCreated = true
-        return p
-    }()
+    /// A fresh VLC player per stream: the old one is stopped off the main thread
+    /// (VLC's stop waits for its network threads and would freeze the screen).
+    private var vlc: VLCMediaPlayer?
+    private var vlcSurface: UIView?
+    private static let vlcStopQueue = DispatchQueue(label: "tv.vlc.stop", qos: .userInitiated)
+    /// Same User-Agent the playlist was downloaded with: many providers bind access to it.
+    static let defaultUserAgent = "VLC/3.0.20 LibVLC/3.0.20"
     private var pip: AVPictureInPictureController?
     private var pipObservers: [NSKeyValueObservation] = []
     private var playerObserver: NSKeyValueObservation?
@@ -155,7 +154,7 @@ final class PlayerController: NSObject, ObservableObject {
     func togglePause() {
         switch active {
         case .system: if avPlayer.timeControlStatus == .paused { avPlayer.play() } else { avPlayer.pause() }
-        case .vlc: if vlc.isPlaying { vlc.pause() } else { vlc.play() }
+        case .vlc: if let v = vlc { if v.isPlaying { v.pause() } else { v.play() } }
         case .none: retry()
         }
     }
@@ -181,7 +180,7 @@ final class PlayerController: NSObject, ObservableObject {
             guard let g = audioGroup, id < g.options.count else { return }
             avPlayer.currentItem?.select(g.options[id], in: g)
         case .vlc:
-            vlc.currentAudioTrackIndex = Int32(id)
+            vlc?.currentAudioTrackIndex = Int32(id)
         case .none:
             return
         }
@@ -201,7 +200,9 @@ final class PlayerController: NSObject, ObservableObject {
         failure = nil
         isPresented = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        DispatchQueue.global(qos: .utility).async {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     /// Wall-clock moment currently on screen.
@@ -213,15 +214,15 @@ final class PlayerController: NSObject, ObservableObject {
     func scenePhaseChanged(_ phase: ScenePhase) {
         switch phase {
         case .background:
-            if active == .vlc, vlc.isPlaying {
-                vlc.pause()             // VLC must not draw video in the background
+            if active == .vlc, let v = vlc, v.isPlaying {
+                v.pause()               // VLC must not draw video in the background
                 pausedForBackground = true
             } else if active == .system, !pipActive {
                 avView.playerLayer.player = nil   // keeps the sound playing in the background
             }
         case .active:
             avView.playerLayer.player = avPlayer
-            if pausedForBackground, active == .vlc { vlc.play() }
+            if pausedForBackground, active == .vlc { vlc?.play() }
             pausedForBackground = false
         default:
             break
@@ -238,9 +239,9 @@ final class PlayerController: NSObject, ObservableObject {
 
     // MARK: engines
 
-    private var userAgent: String? {
+    private var userAgent: String {
         let ua = channel?.userAgent ?? store?.selectedPlaylist?.userAgent
-        return ua?.isEmpty == false ? ua : nil
+        return ua?.isEmpty == false ? ua! : Self.defaultUserAgent
     }
 
     private var preference: PlayerEngine {
@@ -253,7 +254,7 @@ final class PlayerController: NSObject, ObservableObject {
             let s = avPlayer.currentTime().seconds
             return s.isFinite ? s : 0
         case .vlc:
-            return Double(vlc.time.intValue) / 1000
+            return Double(vlc?.time.intValue ?? 0) / 1000
         case .none:
             return 0
         }
@@ -298,7 +299,7 @@ final class PlayerController: NSObject, ObservableObject {
             switch preference {
             case .system: engine = .system
             case .vlc: engine = .vlc
-            case .auto: engine = Self.prefersSystem(url) ? .system : .vlc
+            case .auto: engine = Self.prefersSystem(url) && !Self.hostNeedsVLC(url) ? .system : .vlc
             }
         }
         if engine == .vlc { startVLC(url) } else { startSystem(url) }
@@ -311,7 +312,7 @@ final class PlayerController: NSObject, ObservableObject {
         audioGroup = nil
         avPlayer.pause()
         avPlayer.replaceCurrentItem(with: nil)
-        if vlcCreated, vlc.media != nil { vlc.stop() }
+        retireVLC()
         active = .none
         isPlaying = false
     }
@@ -321,8 +322,9 @@ final class PlayerController: NSObject, ObservableObject {
         attempt += 1
         let token = attempt
         var options: [String: Any] = [:]
-        if let ua = userAgent { options[AVURLAssetHTTPUserAgentKey] = ua }
+        options[AVURLAssetHTTPUserAgentKey] = userAgent
         let item = AVPlayerItem(asset: AVURLAsset(url: url, options: options))
+        item.preferredForwardBufferDuration = 3
         itemObservers = [
             item.observe(\.status, options: [.new]) { [weak self] item, _ in
                 let status = item.status
@@ -334,7 +336,8 @@ final class PlayerController: NSObject, ObservableObject {
         applyFill()
         avPlayer.play()
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            // a live stream that the system player can open starts within a few seconds
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
             guard let self, self.attempt == token, self.active == .system, !self.isPlaying else { return }
             self.systemFailed(String(localized: "The stream did not start in time"))
         }
@@ -355,6 +358,7 @@ final class PlayerController: NSObject, ObservableObject {
     private func systemFailed(_ message: String) {
         if preference == .auto, !didFallback, let url = currentURL {
             didFallback = true
+            Self.rememberVLC(for: url)          // next channels of this server go straight to VLC
             itemObservers = []
             avPlayer.replaceCurrentItem(with: nil)
             startVLC(url)
@@ -394,15 +398,25 @@ final class PlayerController: NSObject, ObservableObject {
         active = .vlc
         attempt += 1
         let token = attempt
+        retireVLC()
+        let surface = UIView(frame: vlcView.bounds)
+        surface.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        surface.backgroundColor = .black
+        vlcView.addSubview(surface)
+        let player = VLCMediaPlayer()
+        player.drawable = surface
+        player.delegate = self
         let media = VLCMedia(url: url)
         let caching = max(300, UserDefaults.standard.integer(forKey: Prefs.networkCaching))
         media.addOption(":network-caching=\(caching)")
         media.addOption(":live-caching=\(caching)")
         media.addOption(":http-reconnect")
-        if let ua = userAgent { media.addOption(":http-user-agent=\(ua)") }
-        vlc.media = media
+        media.addOption(":http-user-agent=\(userAgent)")
+        player.media = media
+        vlc = player
+        vlcSurface = surface
         applyFill()
-        vlc.play()
+        player.play()
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 25_000_000_000)
             guard let self, self.attempt == token, self.active == .vlc, !self.isPlaying, self.failure == nil else { return }
@@ -411,8 +425,36 @@ final class PlayerController: NSObject, ObservableObject {
         }
     }
 
+    private func retireVLC() {
+        guard let old = vlc else { return }
+        let surface = vlcSurface
+        vlc = nil
+        vlcSurface = nil
+        old.delegate = nil
+        surface?.removeFromSuperview()
+        Self.vlcStopQueue.async {
+            old.stop()
+            withExtendedLifetime(surface) {}
+        }
+    }
+
+    private static let vlcHostsKey = "vlcHosts"
+
+    private static func hostNeedsVLC(_ url: URL) -> Bool {
+        guard let h = url.host?.lowercased() else { return false }
+        return (UserDefaults.standard.stringArray(forKey: vlcHostsKey) ?? []).contains(h)
+    }
+
+    private static func rememberVLC(for url: URL) {
+        guard let h = url.host?.lowercased() else { return }
+        var list = UserDefaults.standard.stringArray(forKey: vlcHostsKey) ?? []
+        guard !list.contains(h) else { return }
+        list.append(h)
+        UserDefaults.standard.set(Array(list.suffix(50)), forKey: vlcHostsKey)
+    }
+
     fileprivate func vlcStateChanged() {
-        guard active == .vlc else { return }
+        guard active == .vlc, let vlc else { return }
         switch vlc.state {
         case .opening:
             isBuffering = true
@@ -438,13 +480,14 @@ final class PlayerController: NSObject, ObservableObject {
     }
 
     fileprivate func vlcTimeChanged() {
-        guard active == .vlc else { return }
+        guard active == .vlc, let vlc else { return }
         if isBuffering { isBuffering = false }
         if !isPlaying { isPlaying = vlc.isPlaying }
         if audioTracks.isEmpty { refreshVLCTracks() }
     }
 
     private func refreshVLCTracks() {
+        guard let vlc else { return }
         let names = (vlc.audioTrackNames as? [String]) ?? []
         let indexes = (vlc.audioTrackIndexes as? [NSNumber]) ?? []
         audioTracks = zip(indexes, names).map { AudioTrack(id: $0.intValue, name: $1) }.filter { $0.id >= 0 }
@@ -453,7 +496,7 @@ final class PlayerController: NSObject, ObservableObject {
 
     private func applyFill() {
         avView.playerLayer.videoGravity = fill ? .resizeAspectFill : .resizeAspect
-        guard vlcCreated else { return }
+        guard let vlc else { return }
         let size = vlcView.bounds.size
         if fill, size.width > 0, size.height > 0 {
             vlc.videoCropGeometry = strdup("\(Int(size.width)):\(Int(size.height))")
@@ -483,14 +526,14 @@ final class PlayerController: NSObject, ObservableObject {
         rc.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.active == .system { self.avPlayer.play() } else if self.active == .vlc { self.vlc.play() }
+                if self.active == .system { self.avPlayer.play() } else if self.active == .vlc { self.vlc?.play() }
             }
             return .success
         }
         rc.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.active == .system { self.avPlayer.pause() } else if self.active == .vlc { self.vlc.pause() }
+                if self.active == .system { self.avPlayer.pause() } else if self.active == .vlc { self.vlc?.pause() }
             }
             return .success
         }
