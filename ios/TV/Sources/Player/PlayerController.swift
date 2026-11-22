@@ -1,7 +1,6 @@
 import AVFoundation
 import AVKit
 import MediaPlayer
-import MobileVLCKit
 import SwiftUI
 import UIKit
 
@@ -16,13 +15,12 @@ struct AudioTrack: Identifiable, Hashable {
 }
 
 enum PlayerEngine: String, CaseIterable, Identifiable {
-    case mpv, system, vlc
+    case mpv, system
     var id: String { rawValue }
     var title: String {
         switch self {
         case .mpv: return String(localized: "MPV (recommended)")
         case .system: return String(localized: "System (AVPlayer)")
-        case .vlc: return "VLC"
         }
     }
 
@@ -31,13 +29,13 @@ enum PlayerEngine: String, CaseIterable, Identifiable {
     }
 }
 
-/// Three engines behind one controller:
+/// Two engines behind one controller:
 /// MPV (mpv + FFmpeg, default) — fastest and most tolerant of IPTV streams, no Picture in Picture;
-/// the system player — HLS only, with Picture in Picture and AirPlay; VLC — a spare.
+/// the system player — HLS only, with Picture in Picture and AirPlay.
 /// If the system player cannot open a stream, it falls back to MPV.
 @MainActor
 final class PlayerController: NSObject, ObservableObject {
-    enum Active { case none, system, vlc, mpv }
+    enum Active { case none, system, mpv }
 
     @Published var isPresented = false
     @Published private(set) var channel: Channel?
@@ -62,13 +60,7 @@ final class PlayerController: NSObject, ObservableObject {
 
     let avPlayer = AVPlayer()
     let avView = PlayerLayerView()
-    let vlcView = UIView()
     let mpv = MPVEngine()
-    /// A fresh VLC player per stream: the old one is stopped off the main thread
-    /// (VLC's stop waits for its network threads and would freeze the screen).
-    private var vlc: VLCMediaPlayer?
-    private var vlcSurface: UIView?
-    private static let vlcStopQueue = DispatchQueue(label: "tv.vlc.stop", qos: .userInitiated)
     /// Same User-Agent the playlist was downloaded with: many providers bind access to it.
     static let defaultUserAgent = "VLC/3.0.20 LibVLC/3.0.20"
     private var pip: AVPictureInPictureController?
@@ -79,15 +71,12 @@ final class PlayerController: NSObject, ObservableObject {
     private var attempt = 0
     private var didFallback = false
     private var audioGroup: AVMediaSelectionGroup?
-    private var pausedForBackground = false
 
     override init() {
         super.init()
         avView.backgroundColor = .black
         avView.playerLayer.player = avPlayer
         avView.playerLayer.videoGravity = .resizeAspect
-        vlcView.backgroundColor = .black
-        vlcView.clipsToBounds = true
         avPlayer.allowsExternalPlayback = true
         mpv.onEvent = { [weak self] e in self?.mpvEvent(e) }
 
@@ -190,7 +179,6 @@ final class PlayerController: NSObject, ObservableObject {
     func togglePause() {
         switch active {
         case .system: if avPlayer.timeControlStatus == .paused { avPlayer.play() } else { avPlayer.pause() }
-        case .vlc: if let v = vlc { if v.isPlaying { v.pause() } else { v.play() } }
         case .mpv: mpv.setPaused(!mpv.isPaused)
         case .none: retry()
         }
@@ -216,8 +204,6 @@ final class PlayerController: NSObject, ObservableObject {
         case .system:
             guard let g = audioGroup, id < g.options.count else { return }
             avPlayer.currentItem?.select(g.options[id], in: g)
-        case .vlc:
-            vlc?.currentAudioTrackIndex = Int32(id)
         case .mpv:
             mpv.selectAudioTrack(id)
         case .none:
@@ -255,10 +241,7 @@ final class PlayerController: NSObject, ObservableObject {
     func scenePhaseChanged(_ phase: ScenePhase) {
         switch phase {
         case .background:
-            if active == .vlc, let v = vlc, v.isPlaying {
-                v.pause()               // VLC must not draw video in the background
-                pausedForBackground = true
-            } else if active == .mpv {
+            if active == .mpv {
                 mpv.setVideoEnabled(false)        // sound keeps playing in the background
             } else if active == .system, !pipActive {
                 avView.playerLayer.player = nil   // keeps the sound playing in the background
@@ -266,8 +249,6 @@ final class PlayerController: NSObject, ObservableObject {
         case .active:
             avView.playerLayer.player = avPlayer
             if active == .mpv { mpv.setVideoEnabled(true) }
-            if pausedForBackground, active == .vlc { vlc?.play() }
-            pausedForBackground = false
         default:
             break
         }
@@ -295,8 +276,6 @@ final class PlayerController: NSObject, ObservableObject {
         case .system:
             let s = avPlayer.currentTime().seconds
             return s.isFinite ? s : 0
-        case .vlc:
-            return Double(vlc?.time.intValue ?? 0) / 1000
         case .mpv:
             return mpv.position
         case .none:
@@ -342,12 +321,10 @@ final class PlayerController: NSObject, ObservableObject {
         } else {
             switch preference {
             case .mpv: engine = .mpv
-            case .vlc: engine = .vlc
-            case .system: engine = Self.prefersSystem(url) && !Self.hostNeedsVLC(url) ? .system : .mpv
+            case .system: engine = Self.prefersSystem(url) && !Self.hostNeedsMPV(url) ? .system : .mpv
             }
         }
         switch engine {
-        case .vlc: startVLC(url)
         case .system: startSystem(url)
         default: startMPV(url)
         }
@@ -360,7 +337,6 @@ final class PlayerController: NSObject, ObservableObject {
         audioGroup = nil
         avPlayer.pause()
         avPlayer.replaceCurrentItem(with: nil)
-        retireVLC()
         if active == .mpv { mpv.stop() }
         active = .none
         isPlaying = false
@@ -449,7 +425,7 @@ final class PlayerController: NSObject, ObservableObject {
     private func systemFailed(_ message: String) {
         if preference == .system, !didFallback, let url = currentURL {
             didFallback = true
-            Self.rememberVLC(for: url)          // next channels of this server go straight to MPV
+            Self.rememberMPV(for: url)          // next channels of this server go straight to MPV
             itemObservers = []
             avPlayer.replaceCurrentItem(with: nil)
             startMPV(url)
@@ -485,116 +461,24 @@ final class PlayerController: NSObject, ObservableObject {
         }
     }
 
-    private func startVLC(_ url: URL) {
-        active = .vlc
-        attempt += 1
-        let token = attempt
-        retireVLC()
-        let surface = UIView(frame: vlcView.bounds)
-        surface.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        surface.backgroundColor = .black
-        vlcView.addSubview(surface)
-        let player = VLCMediaPlayer()
-        player.drawable = surface
-        player.delegate = self
-        let media = VLCMedia(url: url)
-        let caching = max(300, UserDefaults.standard.integer(forKey: Prefs.networkCaching))
-        media.addOption(":network-caching=\(caching)")
-        media.addOption(":live-caching=\(caching)")
-        media.addOption(":http-reconnect")
-        media.addOption(":http-user-agent=\(userAgent)")
-        player.media = media
-        vlc = player
-        vlcSurface = surface
-        applyFill()
-        player.play()
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 25_000_000_000)
-            guard let self, self.attempt == token, self.active == .vlc, !self.isPlaying, self.failure == nil else { return }
-            self.failure = String(localized: "The stream did not start in time")
-            self.isBuffering = false
-        }
-    }
+    private static let fallbackHostsKey = "mpvHosts"
 
-    private func retireVLC() {
-        guard let old = vlc else { return }
-        let surface = vlcSurface
-        vlc = nil
-        vlcSurface = nil
-        old.delegate = nil
-        surface?.removeFromSuperview()
-        Self.vlcStopQueue.async {
-            old.stop()
-            withExtendedLifetime(surface) {}
-        }
-    }
-
-    private static let vlcHostsKey = "vlcHosts"
-
-    private static func hostNeedsVLC(_ url: URL) -> Bool {
+    private static func hostNeedsMPV(_ url: URL) -> Bool {
         guard let h = url.host?.lowercased() else { return false }
-        return (UserDefaults.standard.stringArray(forKey: vlcHostsKey) ?? []).contains(h)
+        return (UserDefaults.standard.stringArray(forKey: fallbackHostsKey) ?? []).contains(h)
     }
 
-    private static func rememberVLC(for url: URL) {
+    private static func rememberMPV(for url: URL) {
         guard let h = url.host?.lowercased() else { return }
-        var list = UserDefaults.standard.stringArray(forKey: vlcHostsKey) ?? []
+        var list = UserDefaults.standard.stringArray(forKey: fallbackHostsKey) ?? []
         guard !list.contains(h) else { return }
         list.append(h)
-        UserDefaults.standard.set(Array(list.suffix(50)), forKey: vlcHostsKey)
-    }
-
-    fileprivate func vlcStateChanged() {
-        guard active == .vlc, let vlc else { return }
-        switch vlc.state {
-        case .opening:
-            isBuffering = true
-        case .buffering:
-            isBuffering = !vlc.isPlaying
-        case .playing:
-            isBuffering = false
-            isPlaying = true
-            failure = nil
-            refreshVLCTracks()
-        case .paused:
-            isPlaying = false
-        case .stopped, .ended:
-            isPlaying = false
-            isBuffering = false
-        case .error:
-            isPlaying = false
-            isBuffering = false
-            failure = String(localized: "Could not play this stream")
-        default:
-            break
-        }
-    }
-
-    fileprivate func vlcTimeChanged() {
-        guard active == .vlc, let vlc else { return }
-        if isBuffering { isBuffering = false }
-        if !isPlaying { isPlaying = vlc.isPlaying }
-        if audioTracks.isEmpty { refreshVLCTracks() }
-    }
-
-    private func refreshVLCTracks() {
-        guard let vlc else { return }
-        let names = (vlc.audioTrackNames as? [String]) ?? []
-        let indexes = (vlc.audioTrackIndexes as? [NSNumber]) ?? []
-        audioTracks = zip(indexes, names).map { AudioTrack(id: $0.intValue, name: $1) }.filter { $0.id >= 0 }
-        selectedAudioTrack = Int(vlc.currentAudioTrackIndex)
+        UserDefaults.standard.set(Array(list.suffix(50)), forKey: fallbackHostsKey)
     }
 
     private func applyFill() {
         avView.playerLayer.videoGravity = fill ? .resizeAspectFill : .resizeAspect
         if active == .mpv { mpv.setFill(fill) }
-        guard let vlc else { return }
-        let size = vlcView.bounds.size
-        if fill, size.width > 0, size.height > 0 {
-            vlc.videoCropGeometry = strdup("\(Int(size.width)):\(Int(size.height))")
-        } else {
-            vlc.videoCropGeometry = nil
-        }
     }
 
     // MARK: lock screen / Control Center
@@ -618,14 +502,14 @@ final class PlayerController: NSObject, ObservableObject {
         rc.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.active == .system { self.avPlayer.play() } else if self.active == .vlc { self.vlc?.play() } else if self.active == .mpv { self.mpv.setPaused(false) }
+                if self.active == .system { self.avPlayer.play() } else if self.active == .mpv { self.mpv.setPaused(false) }
             }
             return .success
         }
         rc.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.active == .system { self.avPlayer.pause() } else if self.active == .vlc { self.vlc?.pause() } else if self.active == .mpv { self.mpv.setPaused(true) }
+                if self.active == .system { self.avPlayer.pause() } else if self.active == .mpv { self.mpv.setPaused(true) }
             }
             return .success
         }
@@ -637,16 +521,6 @@ final class PlayerController: NSObject, ObservableObject {
             Task { @MainActor in self?.step(-1) }
             return .success
         }
-    }
-}
-
-extension PlayerController: VLCMediaPlayerDelegate {
-    nonisolated func mediaPlayerStateChanged(_ aNotification: Notification) {
-        Task { @MainActor in self.vlcStateChanged() }
-    }
-
-    nonisolated func mediaPlayerTimeChanged(_ aNotification: Notification) {
-        Task { @MainActor in self.vlcTimeChanged() }
     }
 }
 

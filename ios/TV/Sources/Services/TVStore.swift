@@ -203,8 +203,31 @@ final class TVStore: ObservableObject {
         return list.filter { seen.insert($0).inserted }
     }
 
+    var guideEnabled: Bool { UserDefaults.standard.bool(forKey: Prefs.epgEnabled) }
+
+    /// Settings switch: when off, nothing is downloaded or kept in memory.
+    func setGuideEnabled(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: Prefs.epgEnabled)
+        epgLoadedFor = nil
+        epgVersion += 1
+        if on {
+            guard let p = selectedPlaylist else { return }
+            Task { await loadEPG(p, UserDefaults.standard.string(forKey: "epg-\(p.id)")) }
+        } else {
+            epg.cancel()
+            epg.clear()
+            epgStatus = .idle
+            epgVersion += 1
+        }
+    }
+
     private func loadEPG(_ p: Playlist, _ fromPlaylist: String?) async {
         if let fromPlaylist { UserDefaults.standard.set(fromPlaylist, forKey: "epg-\(p.id)") }
+        guard guideEnabled else {
+            if !epg.byChannel.isEmpty { epg.clear(); epgVersion += 1 }
+            epgStatus = .idle
+            return
+        }
         let sources = guideSources(for: p, fromPlaylist: fromPlaylist)
         let key = sources.joined(separator: "|") + "#\(p.id)#\(channels.count)"
         guard epgLoadedFor != key else { return }
@@ -227,13 +250,13 @@ final class TVStore: ObservableObject {
             epgStatus = .idle
             epgVersion += 1
         } catch {
-            epgStatus = .failed
+            epgStatus = guideEnabled && !(error is CancellationError) ? .failed : .idle
             epgLoadedFor = nil
         }
     }
 
     func reloadGuide() {
-        guard let p = selectedPlaylist else { return }
+        guard let p = selectedPlaylist, guideEnabled else { return }
         epgLoadedFor = nil
         EPGService.clearCache()
         Task { await loadEPG(p, UserDefaults.standard.string(forKey: "epg-\(p.id)")) }

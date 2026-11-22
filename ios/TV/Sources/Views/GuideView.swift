@@ -12,6 +12,15 @@ struct GuideView: View {
             Group {
                 if store.playlists.isEmpty {
                     WelcomeView()
+                } else if !store.guideEnabled {
+                    VStack(spacing: 16) {
+                        EmptyStateView(icon: "calendar.badge.minus", title: "TV guide is off",
+                                       message: "Turn it on to see what's on now and next.")
+                            .frame(maxHeight: 260)
+                        Button("Turn On") { store.setGuideEnabled(true) }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     content
                 }

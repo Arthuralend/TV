@@ -3,9 +3,9 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var store: TVStore
     @AppStorage(Prefs.engine) private var engine = PlayerEngine.mpv.rawValue
-    @AppStorage(Prefs.networkCaching) private var networkCaching = 1000
     @AppStorage(Prefs.useLogoDB) private var useLogoDB = true
     @AppStorage(Prefs.useDefaultEPG) private var useDefaultEPG = true
+    @AppStorage(Prefs.epgEnabled) private var epgEnabled = true
     @State private var showEditor = false
     @State private var cleared = false
 
@@ -45,6 +45,8 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("Show TV Guide", isOn: Binding(get: { epgEnabled }, set: { store.setGuideEnabled($0) }))
+                    if epgEnabled {
                     Toggle("Built-in guide sources", isOn: $useDefaultEPG)
                     HStack {
                         Text("Updated")
@@ -68,27 +70,25 @@ struct SettingsView: View {
                     }
                     Button("Update TV Guide Now") { store.reloadGuide() }
                         .disabled(store.selectedPlaylist == nil || store.epgStatus.isBusy)
+                    }
                 } header: {
                     Text("TV Guide")
                 } footer: {
-                    Text("The guide named in your playlist is used first. Built-in sources add a public XMLTV guide for channels that have none.")
+                    if epgEnabled {
+                        Text("The guide named in your playlist is used first. Built-in sources add a public XMLTV guide for channels that have none.")
+                    } else {
+                        Text("The TV guide is off: nothing is downloaded, the app uses less data, memory and battery.")
+                    }
                 }
 
                 Section {
                     Picker("Player", selection: $engine) {
                         ForEach(PlayerEngine.allCases) { Text($0.title).tag($0.rawValue) }
                     }
-                    Stepper(value: $networkCaching, in: 300...10000, step: 500) {
-                        HStack {
-                            Text("VLC buffer")
-                            Spacer()
-                            Text(verbatim: "\(networkCaching) ms").foregroundStyle(.secondary).monospacedDigit()
-                        }
-                    }
                 } header: {
                     Text("Playback")
                 } footer: {
-                    Text("MPV is the fastest and most reliable for IPTV, but has no Picture in Picture. The system player supports Picture in Picture and AirPlay but plays only HLS (.m3u8); if it cannot open a channel, MPV is used. VLC is a spare player.")
+                    Text("MPV is the fastest and most reliable for IPTV, but has no Picture in Picture. The system player supports Picture in Picture and AirPlay but plays only HLS (.m3u8); if it cannot open a channel, MPV is used.")
                 }
 
                 Section {

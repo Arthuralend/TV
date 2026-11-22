@@ -144,11 +144,10 @@ struct VideoSurface: UIViewRepresentable {
     private func attach(to v: UIView) {
         let target: UIView
         switch player.active {
-        case .vlc: target = player.vlcView
         case .system: target = player.avView
         case .mpv, .none: target = player.mpv.view
         }
-        for other in [player.vlcView, player.avView, player.mpv.view] where other !== target && other.superview === v {
+        for other in [player.avView, player.mpv.view] where other !== target && other.superview === v {
             other.removeFromSuperview()
         }
         if target.superview !== v {
@@ -514,9 +513,6 @@ private struct EngineButtons: View {
         }
         if player.active != .system {
             Button { player.retry(engine: .system) } label: { Text("Play in System Player") }
-        }
-        if player.active != .vlc {
-            Button { player.retry(engine: .vlc) } label: { Text("Play in VLC") }
         }
     }
 }

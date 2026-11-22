@@ -52,7 +52,7 @@ final class EPGService {
     func refresh(from sources: [String], userAgent: String?, channels: [Channel], playlist: UUID,
                  stage: @escaping @Sendable (EPGStatus) -> Void) async throws {
         // everything heavy (download, scan, matching thousands of channels) stays off the main thread
-        let (map, icons) = try await Task.detached(priority: .utility) { () -> ([String: [Programme]], [String: String]) in
+        let task = Task.detached(priority: .utility) { () -> ([String: [Programme]], [String: String]) in
             let wanted = EPGWanted(channels)
             let data = try await EPGLoader.load(sources: sources, userAgent: userAgent, wanted: wanted, stage: stage)
             let from = Date().addingTimeInterval(-7 * 86400), to = Date().addingTimeInterval(3 * 86400)
@@ -64,7 +64,12 @@ final class EPGService {
                 if let ic = data.icon(for: c) { icons[c.id] = ic }
             }
             return (map, icons)
-        }.value
+        }
+        running = task
+        defer { running = nil }
+        let (map, icons) = try await task.value
+        try Task.checkCancellation()
+        guard !task.isCancelled else { throw CancellationError() }
         byChannel = map
         iconByChannel = icons
         savedAt = Date()
@@ -74,6 +79,11 @@ final class EPGService {
             if let d = try? JSONEncoder().encode(compact) { try? d.write(to: url, options: .atomic) }
         }
     }
+
+    private var running: Task<([String: [Programme]], [String: String]), Error>?
+
+    /// Stops a download / scan in progress (the TV guide was turned off).
+    func cancel() { running?.cancel() }
 
     func schedule(for c: Channel) -> [Programme] { byChannel[c.id] ?? [] }
 
@@ -166,6 +176,7 @@ enum EPGLoader {
                      stage: @escaping @Sendable (EPGStatus) -> Void) async throws -> EPGData {
         var lastError: Error = URLError(.badURL)
         for s in sources {
+            try Task.checkCancellation()
             do {
                 stage(.downloading)
                 let file = try await xmlFile(for: s, userAgent: userAgent)
@@ -174,6 +185,7 @@ enum EPGLoader {
                 if !data.programmes.isEmpty { return data }
                 lastError = URLError(.cannotParseResponse)
             } catch {
+                if error is CancellationError { throw error }
                 lastError = error
             }
         }
@@ -389,7 +401,10 @@ private struct ByteScan {
 
     mutating func run() {
         var i = 0
+        var steps = 0
         while i < n {
+            steps += 1
+            if steps & 0xFFF == 0, Task.isCancelled { return }
             guard let lt = indexOf(60, i, n) else { break }      // "<"
             let after = lt + 1
             if matches(Self.programmeTag, at: after), after + 9 < n, isSpace(p[after + 9]) {

@@ -160,7 +160,7 @@ enum AppLinks {
 
 enum Prefs {
     static let engine = "playerEngine"
-    static let networkCaching = "networkCaching"
+    static let epgEnabled = "epgEnabled"
     static let useLogoDB = "useLogoDB"
     static let useDefaultEPG = "useDefaultEPG"
 
@@ -169,7 +169,7 @@ enum Prefs {
         if UserDefaults.standard.string(forKey: engine) == "auto" { UserDefaults.standard.set(PlayerEngine.mpv.rawValue, forKey: engine) }
         UserDefaults.standard.register(defaults: [
             engine: PlayerEngine.mpv.rawValue,
-            networkCaching: 1000,
+            epgEnabled: true,
             useLogoDB: true,
             useDefaultEPG: true,
         ])
