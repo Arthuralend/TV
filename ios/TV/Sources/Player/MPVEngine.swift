@@ -111,7 +111,7 @@ final class MPVEngine {
 
     func load(_ url: URL, userAgent: String) {
         setup()
-        guard mpv != nil else { onEvent?(.failed(String(localized: "Could not play this stream"))); return }
+        guard mpv != nil else { emit(.failed(String(localized: "Could not play this stream"))); return }
         setString("user-agent", userAgent)
         setFlag("pause", false)
         command(["loadfile", url.absoluteString, "replace"])
