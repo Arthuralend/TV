@@ -15,7 +15,7 @@ struct PlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if landscape {
-                video.ignoresSafeArea()
+                video   // the picture goes edge to edge, the controls stay clear of the camera
             } else {
                 VStack(spacing: 0) {
                     video.aspectRatio(16 / 9, contentMode: .fit)
@@ -48,6 +48,7 @@ struct PlayerScreen: View {
     private var video: some View {
         ZStack {
             VideoSurface(player: player)
+                .ignoresSafeArea(edges: landscape ? .all : [])
             if player.isBuffering && player.failure == nil {
                 ProgressView().controlSize(.large).tint(.white)
             }
@@ -180,6 +181,7 @@ private struct PlayerControls: View {
     var body: some View {
         ZStack {
             LinearGradient(colors: [.black.opacity(0.7), .clear, .clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: landscape ? .all : [])
                 .allowsHitTesting(false)
             VStack(spacing: 0) {
                 topBar
