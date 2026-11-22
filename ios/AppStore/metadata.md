@@ -28,7 +28,7 @@
 Смотрите свои IPTV-каналы с удобной телепрограммой: что идёт сейчас, что будет дальше, архив передач, напоминания, «картинка в картинке» и AirPlay.
 
 **Keywords (100, через запятую без пробелов):**
-iptv,m3u,m3u8,xtream,телегид,телепрограмма,epg,xmltv,плеер,тв,каналы,онлайн,архив,плейлист,vlc
+iptv,m3u,m3u8,xtream,телегид,телепрограмма,epg,xmltv,плеер,тв,каналы,онлайн,архив,плейлист,mpv
 
 **Description / Описание (4000):**
 ```
@@ -50,7 +50,7 @@ TV — простой и быстрый плеер для ваших IPTV-пле
 
 ПРОСМОТР
 • Системный плеер для HLS: «картинка в картинке» и AirPlay
-• Встроенный движок VLC для MPEG-TS и других форматов
+• Встроенный плеер MPV: быстрый старт, MPEG-TS и другие форматы
 • Архив передач (catch-up), если его поддерживает провайдер
 • Переключение каналов свайпом, выбор аудиодорожки, режим «заполнить экран»
 • Звук продолжает играть в фоне
@@ -74,7 +74,7 @@ M3U Player with Live TV Guide
 Watch your own IPTV channels with a clean TV guide: what's on now and next, catch-up, reminders, Picture in Picture and AirPlay.
 
 **Keywords (100):**
-iptv,m3u,m3u8,xtream,epg,xmltv,guide,player,live,channels,playlist,catchup,vlc,stream,tv guide
+iptv,m3u,m3u8,xtream,epg,xmltv,guide,player,live,channels,playlist,catchup,mpv,stream,tv guide
 
 **Description (4000):**
 ```
@@ -96,7 +96,7 @@ TV GUIDE
 
 WATCHING
 • System player for HLS with Picture in Picture and AirPlay
-• Built-in VLC engine for MPEG-TS and other formats
+• Built-in MPV player: fast start, MPEG-TS and other formats
 • Catch-up (archive) when your provider supports it
 • Swipe to change channels, audio track selection, fill screen
 • Audio keeps playing in the background

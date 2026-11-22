@@ -81,7 +81,6 @@
 "Picture in Picture and AirPlay" = "Картинка в картинке и AirPlay";
 "Play" = "Воспроизвести";
 "Play in System Player" = "Открыть в системном плеере";
-"Play in VLC" = "Открыть в VLC";
 "Playback" = "Воспроизведение";
 "Player" = "Плеер";
 "Playlist" = "Плейлист";
@@ -118,7 +117,6 @@
 "Today" = "Сегодня";
 "Tomorrow" = "Завтра";
 "Try System Player" = "Системный плеер";
-"Try VLC" = "Попробовать VLC";
 "Type" = "Тип";
 "Ungrouped" = "Без группы";
 "Update TV Guide Now" = "Обновить телегид";
@@ -126,7 +124,6 @@
 "Use This Playlist" = "Использовать этот плейлист";
 "User-Agent" = "User-Agent";
 "Username" = "Имя пользователя";
-"VLC buffer" = "Буфер VLC";
 "Version" = "Версия";
 "Watch" = "Смотреть";
 "Watch from the archive" = "Смотреть из архива";
@@ -140,10 +137,15 @@
 "Downloading…" = "Скачивание…";
 "Processing…" = "Обработка…";
 "MPV (recommended)" = "MPV (рекомендуется)";
-"MPV is the fastest and most reliable for IPTV, but has no Picture in Picture. The system player supports Picture in Picture and AirPlay but plays only HLS (.m3u8); if it cannot open a channel, MPV is used. VLC is a spare player." = "MPV — самый быстрый и стабильный для IPTV, но без «картинки в картинке». Системный плеер поддерживает «картинку в картинке» и AirPlay, но играет только HLS (.m3u8); если он не может открыть канал, включается MPV. VLC — запасной плеер.";
+"MPV is the fastest and most reliable for IPTV, but has no Picture in Picture. The system player supports Picture in Picture and AirPlay but plays only HLS (.m3u8); if it cannot open a channel, MPV is used." = "MPV — самый быстрый и стабильный для IPTV, но без «картинки в картинке». Системный плеер поддерживает «картинку в картинке» и AirPlay, но играет только HLS (.m3u8); если он не может открыть канал, включается MPV.";
 "Play in MPV" = "Открыть в MPV";
 "Other Player" = "Другой плеер";
 "Groups" = "Группы";
 "All Channels" = "Все каналы";
 "Track %lld" = "Дорожка %lld";
 "The broadcast has ended" = "Трансляция завершилась";
+"Show TV Guide" = "Показывать телегид";
+"The TV guide is off: nothing is downloaded, the app uses less data, memory and battery." = "Телегид выключен: ничего не скачивается, приложение расходует меньше трафика, памяти и батареи.";
+"TV guide is off" = "Телегид выключен";
+"Turn it on to see what's on now and next." = "Включите его, чтобы видеть, что идёт сейчас и что будет дальше.";
+"Turn On" = "Включить";

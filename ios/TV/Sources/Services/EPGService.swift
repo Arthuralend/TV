@@ -51,18 +51,25 @@ final class EPGService {
     /// Downloads and parses the guide, keeps only this playlist's channels and saves them compactly.
     func refresh(from sources: [String], userAgent: String?, channels: [Channel], playlist: UUID,
                  stage: @escaping @Sendable (EPGStatus) -> Void) async throws {
-        let data = try await Task.detached(priority: .userInitiated) {
+        // everything heavy (download, scan, matching thousands of channels) stays off the main thread
+        let task = Task.detached(priority: .utility) { () -> ([String: [Programme]], [String: String]) in
             let wanted = EPGWanted(channels)
-            return try await EPGLoader.load(sources: sources, userAgent: userAgent, wanted: wanted, stage: stage)
-        }.value
-        let from = Date().addingTimeInterval(-7 * 86400), to = Date().addingTimeInterval(3 * 86400)
-        var map: [String: [Programme]] = [:]
-        var icons: [String: String] = [:]
-        for c in channels {
-            let list = data.schedule(for: c).filter { $0.stop > from && $0.start < to }
-            if !list.isEmpty { map[c.id] = list }
-            if let ic = data.icon(for: c) { icons[c.id] = ic }
+            let data = try await EPGLoader.load(sources: sources, userAgent: userAgent, wanted: wanted, stage: stage)
+            let from = Date().addingTimeInterval(-7 * 86400), to = Date().addingTimeInterval(3 * 86400)
+            var map: [String: [Programme]] = [:]
+            var icons: [String: String] = [:]
+            for c in channels {
+                let list = data.schedule(for: c).filter { $0.stop > from && $0.start < to }
+                if !list.isEmpty { map[c.id] = list }
+                if let ic = data.icon(for: c) { icons[c.id] = ic }
+            }
+            return (map, icons)
         }
+        running = task
+        defer { running = nil }
+        let (map, icons) = try await task.value
+        try Task.checkCancellation()
+        guard !task.isCancelled else { throw CancellationError() }
         byChannel = map
         iconByChannel = icons
         savedAt = Date()
@@ -73,20 +80,37 @@ final class EPGService {
         }
     }
 
+    private var running: Task<([String: [Programme]], [String: String]), Error>?
+
+    /// Stops a download / scan in progress (the TV guide was turned off).
+    func cancel() { running?.cancel() }
+
     func schedule(for c: Channel) -> [Programme] { byChannel[c.id] ?? [] }
 
     func icon(for c: Channel) -> String? { iconByChannel[c.id] }
 
+    /// Index of the first programme that ends after `date` (binary search: lists are sorted).
+    private static func firstEnding(after date: Date, in list: [Programme]) -> Int {
+        var lo = 0, hi = list.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if list[mid].stop <= date { lo = mid + 1 } else { hi = mid }
+        }
+        return lo
+    }
+
     func programme(for c: Channel, at date: Date) -> Programme? {
-        schedule(for: c).first { $0.start <= date && $0.stop > date }
+        guard let list = byChannel[c.id] else { return nil }
+        let i = Self.firstEnding(after: date, in: list)
+        return i < list.count && list[i].start <= date ? list[i] : nil
     }
 
     func nowNext(for c: Channel, at now: Date = Date()) -> (Programme?, Programme?) {
-        let list = schedule(for: c)
-        guard let i = list.firstIndex(where: { $0.isLive(at: now) }) else {
-            return (nil, list.first { $0.start > now })
-        }
-        return (list[i], i + 1 < list.count ? list[i + 1] : nil)
+        guard let list = byChannel[c.id] else { return (nil, nil) }
+        let i = Self.firstEnding(after: now, in: list)
+        guard i < list.count else { return (nil, nil) }
+        if list[i].start <= now { return (list[i], i + 1 < list.count ? list[i + 1] : nil) }
+        return (nil, list[i])
     }
 
     static func clearCache() {
@@ -152,6 +176,7 @@ enum EPGLoader {
                      stage: @escaping @Sendable (EPGStatus) -> Void) async throws -> EPGData {
         var lastError: Error = URLError(.badURL)
         for s in sources {
+            try Task.checkCancellation()
             do {
                 stage(.downloading)
                 let file = try await xmlFile(for: s, userAgent: userAgent)
@@ -160,6 +185,7 @@ enum EPGLoader {
                 if !data.programmes.isEmpty { return data }
                 lastError = URLError(.cannotParseResponse)
             } catch {
+                if error is CancellationError { throw error }
                 lastError = error
             }
         }
@@ -375,7 +401,10 @@ private struct ByteScan {
 
     mutating func run() {
         var i = 0
+        var steps = 0
         while i < n {
+            steps += 1
+            if steps & 0xFFF == 0, Task.isCancelled { return }
             guard let lt = indexOf(60, i, n) else { break }      // "<"
             let after = lt + 1
             if matches(Self.programmeTag, at: after), after + 9 < n, isSpace(p[after + 9]) {

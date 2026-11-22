@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ChannelsView: View {
     @EnvironmentObject private var store: TVStore
-    @EnvironmentObject private var player: PlayerController
+    @Environment(\.playerRef) private var player
     @State private var group = ChannelGroup.all
     @State private var search = ""
     @State private var path: [Channel] = []
@@ -51,7 +51,7 @@ struct ChannelsView: View {
             } else {
                 List(items) { c in
                     ChannelRow(channel: c, onGuide: { path.append(c) }) {
-                        player.open(c, queue: items)
+                        player?.open(c, queue: items)
                     }
                     .channelActions(c, store: store) { path.append(c) }
                     .listRowBackground(Color.clear)

@@ -15,7 +15,7 @@ struct PlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if landscape {
-                video.ignoresSafeArea()
+                video   // the picture goes edge to edge, the controls stay clear of the camera
             } else {
                 VStack(spacing: 0) {
                     video.aspectRatio(16 / 9, contentMode: .fit)
@@ -48,6 +48,7 @@ struct PlayerScreen: View {
     private var video: some View {
         ZStack {
             VideoSurface(player: player)
+                .ignoresSafeArea(edges: landscape ? .all : [])
             if player.isBuffering && player.failure == nil {
                 ProgressView().controlSize(.large).tint(.white)
             }
@@ -143,11 +144,10 @@ struct VideoSurface: UIViewRepresentable {
     private func attach(to v: UIView) {
         let target: UIView
         switch player.active {
-        case .vlc: target = player.vlcView
         case .system: target = player.avView
         case .mpv, .none: target = player.mpv.view
         }
-        for other in [player.vlcView, player.avView, player.mpv.view] where other !== target && other.superview === v {
+        for other in [player.avView, player.mpv.view] where other !== target && other.superview === v {
             other.removeFromSuperview()
         }
         if target.superview !== v {
@@ -180,6 +180,7 @@ private struct PlayerControls: View {
     var body: some View {
         ZStack {
             LinearGradient(colors: [.black.opacity(0.7), .clear, .clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: landscape ? .all : [])
                 .allowsHitTesting(false)
             VStack(spacing: 0) {
                 topBar
@@ -401,7 +402,7 @@ private struct ChannelListOverlay: View {
                     .frame(width: min(400, geo.size.width * (landscape ? 0.45 : 0.86)))
             }
         }
-        .ignoresSafeArea(edges: landscape ? .all : [])
+        .ignoresSafeArea(edges: landscape ? .vertical : [])   // keep clear of the camera / Dynamic Island
         .gesture(
             DragGesture(minimumDistance: 30).onEnded { v in
                 if v.translation.width > 60, abs(v.translation.width) > abs(v.translation.height) {
@@ -513,9 +514,6 @@ private struct EngineButtons: View {
         if player.active != .system {
             Button { player.retry(engine: .system) } label: { Text("Play in System Player") }
         }
-        if player.active != .vlc {
-            Button { player.retry(engine: .vlc) } label: { Text("Play in VLC") }
-        }
     }
 }
 
@@ -534,7 +532,7 @@ private struct GroupListOverlay: View {
                     .onTapGesture { player.showGroupList = false }
             }
         }
-        .ignoresSafeArea(edges: landscape ? .all : [])
+        .ignoresSafeArea(edges: landscape ? .vertical : [])   // keep clear of the camera / Dynamic Island
         .gesture(
             DragGesture(minimumDistance: 30).onEnded { v in
                 if v.translation.width < -60, abs(v.translation.width) > abs(v.translation.height) {

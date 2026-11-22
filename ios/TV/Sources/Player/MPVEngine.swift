@@ -43,6 +43,13 @@ final class MPVVideoView: UIView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         metalLayer.frame = bounds
+        // a sublayer's drawable is not resized automatically: without this, after rotating
+        // the picture stays at the old (portrait) size in a corner of the screen
+        let scale = window?.screen.nativeScale ?? UIScreen.main.nativeScale
+        metalLayer.contentsScale = scale
+        if bounds.width > 1, bounds.height > 1 {
+            metalLayer.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        }
         CATransaction.commit()
     }
 }

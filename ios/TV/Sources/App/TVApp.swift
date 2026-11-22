@@ -27,6 +27,7 @@ struct TVApp: App {
                 .environmentObject(store)
                 .environmentObject(player)
                 .environmentObject(reminders)
+                .environment(\.playerRef, player)
                 .preferredColorScheme(.dark)
                 .tint(Theme.orange)
                 .onOpenURL { url in
@@ -41,6 +42,19 @@ struct TVApp: App {
             player.scenePhaseChanged(phase)
             if phase == .active { store.refreshIfStale() }
         }
+    }
+}
+
+/// The player for views that only start playback: unlike @EnvironmentObject this does not
+/// re-render them every time the player's state changes.
+private struct PlayerRefKey: EnvironmentKey {
+    static let defaultValue: PlayerController? = nil
+}
+
+extension EnvironmentValues {
+    var playerRef: PlayerController? {
+        get { self[PlayerRefKey.self] }
+        set { self[PlayerRefKey.self] = newValue }
     }
 }
 

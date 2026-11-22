@@ -13,6 +13,7 @@ final class TVStore: ObservableObject {
     @Published private(set) var selectedPlaylistID: UUID?
     @Published private(set) var channels: [Channel] = []
     @Published private(set) var groups: [String] = []
+    private var byGroup: [String: [Channel]] = [:]
     @Published private(set) var favorites: Set<String> = []
     @Published private(set) var recents: [String] = []
     @Published private(set) var isLoading = false
@@ -54,6 +55,15 @@ final class TVStore: ObservableObject {
     }
 
     private func savePlaylists() { save(playlists, "playlists.json") }
+
+    /// Big channel lists are decoded off the main thread.
+    private func loadChannels(_ name: String) async -> [Channel]? {
+        let url = dir.appendingPathComponent(name)
+        return await Task.detached(priority: .userInitiated) { () -> [Channel]? in
+            guard let d = try? Data(contentsOf: url) else { return nil }
+            return try? JSONDecoder().decode([Channel].self, from: d)
+        }.value
+    }
 
     // MARK: playlists
 
@@ -124,7 +134,7 @@ final class TVStore: ObservableObject {
         let cacheName = "channels-\(p.id).json"
         let stale = p.lastUpdated.map { Date().timeIntervalSince($0) > Double(max(p.autoRefreshHours, 1)) * 3600 } ?? true
         let useCache = !forceRefresh && (!stale || p.kind == .file || p.autoRefreshHours == 0)
-        if useCache, let cached = load([Channel].self, cacheName), !cached.isEmpty {
+        if useCache, let cached = await loadChannels(cacheName), !cached.isEmpty {
             apply(cached)
             await loadEPG(p, UserDefaults.standard.string(forKey: "epg-\(p.id)"))
             return
@@ -152,7 +162,7 @@ final class TVStore: ObservableObject {
             await loadEPG(p, result.epgURL)
         } catch {
             guard selectedPlaylistID == p.id else { return }
-            if let cached = load([Channel].self, cacheName), !cached.isEmpty {
+            if let cached = await loadChannels(cacheName), !cached.isEmpty {
                 apply(cached)
                 await loadEPG(p, UserDefaults.standard.string(forKey: "epg-\(p.id)"))
             }
@@ -193,8 +203,31 @@ final class TVStore: ObservableObject {
         return list.filter { seen.insert($0).inserted }
     }
 
+    var guideEnabled: Bool { UserDefaults.standard.bool(forKey: Prefs.epgEnabled) }
+
+    /// Settings switch: when off, nothing is downloaded or kept in memory.
+    func setGuideEnabled(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: Prefs.epgEnabled)
+        epgLoadedFor = nil
+        epgVersion += 1
+        if on {
+            guard let p = selectedPlaylist else { return }
+            Task { await loadEPG(p, UserDefaults.standard.string(forKey: "epg-\(p.id)")) }
+        } else {
+            epg.cancel()
+            epg.clear()
+            epgStatus = .idle
+            epgVersion += 1
+        }
+    }
+
     private func loadEPG(_ p: Playlist, _ fromPlaylist: String?) async {
         if let fromPlaylist { UserDefaults.standard.set(fromPlaylist, forKey: "epg-\(p.id)") }
+        guard guideEnabled else {
+            if !epg.byChannel.isEmpty { epg.clear(); epgVersion += 1 }
+            epgStatus = .idle
+            return
+        }
         let sources = guideSources(for: p, fromPlaylist: fromPlaylist)
         let key = sources.joined(separator: "|") + "#\(p.id)#\(channels.count)"
         guard epgLoadedFor != key else { return }
@@ -217,13 +250,13 @@ final class TVStore: ObservableObject {
             epgStatus = .idle
             epgVersion += 1
         } catch {
-            epgStatus = .failed
+            epgStatus = guideEnabled && !(error is CancellationError) ? .failed : .idle
             epgLoadedFor = nil
         }
     }
 
     func reloadGuide() {
-        guard let p = selectedPlaylist else { return }
+        guard let p = selectedPlaylist, guideEnabled else { return }
         epgLoadedFor = nil
         EPGService.clearCache()
         Task { await loadEPG(p, UserDefaults.standard.string(forKey: "epg-\(p.id)")) }
@@ -234,14 +267,19 @@ final class TVStore: ObservableObject {
         channels = list.filter { seen.insert($0.id).inserted }
         var order: [String] = []
         var known = Set<String>()
-        for c in channels where known.insert(c.group).inserted { order.append(c.group) }
+        var index: [String: [Channel]] = [:]
+        for c in channels {
+            if known.insert(c.group).inserted { order.append(c.group) }
+            index[c.group, default: []].append(c)
+        }
+        byGroup = index
         groups = order
     }
 
     // MARK: lists
 
     func channels(in group: String?, search: String) -> [Channel] {
-        var list = group.map { g in channels.filter { $0.group == g } } ?? channels
+        var list = group.map { byGroup[$0] ?? [] } ?? channels
         let q = search.trimmingCharacters(in: .whitespaces)
         if !q.isEmpty { list = list.filter { $0.name.localizedCaseInsensitiveContains(q) } }
         return list

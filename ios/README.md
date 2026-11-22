@@ -10,7 +10,7 @@
 * Каналы: группы, поиск, избранное, недавние, логотипы (из плейлиста, телегида или базы iptv-org).
 * Телегид XMLTV (.xml / .xml.gz): «сейчас / далее» в списке, вкладка «Телегид» по времени, расписание канала по дням, напоминания (локальные уведомления).
 * Архив (catch-up) в форматах flussonic / shift / append / шаблоны `catchup-source`.
-* Плеер: MPV (mpv + FFmpeg через MPVKit, по умолчанию — быстрый старт, без «картинки в картинке»), системный AVPlayer для HLS (картинка в картинке, AirPlay; если не может открыть канал — включается MPV) и VLC как запасной. Свайп по видео справа налево — список каналов, слева направо — список групп.
+* Плеер: MPV (mpv + FFmpeg через MPVKit, по умолчанию — быстрый старт, без «картинки в картинке»), системный AVPlayer для HLS (картинка в картинке, AirPlay; если не может открыть канал — включается MPV) Свайп по видео справа налево — список каналов, слева направо — список групп.
 * Без аккаунтов, рекламы, аналитики. Манифест приватности `PrivacyInfo.xcprivacy` включён.
 
 > Скрытого встроенного плейлиста и промокода (как в версиях для Mac/Android) в iOS-версии **нет намеренно**: Apple отклоняет приложения со скрытыми функциями (правило 2.3.1) и IPTV-приложения, которые сами раздают каналы (5.2.3).
@@ -20,7 +20,6 @@
 ```
 ios/
   project.yml            — описание проекта для XcodeGen
-  Podfile                — MobileVLCKit
   ExportOptions.plist    — выгрузка в App Store Connect
   TV/Sources/            — код SwiftUI
   TV/Resources/          — иконка, локализация, PrivacyInfo.xcprivacy
@@ -67,15 +66,15 @@ GitHub → репозиторий **Arthuralend/TV** → Settings → Pages → 
 ## 3б. Сборка на Mac в Xcode
 
 ```bash
-brew install xcodegen cocoapods
+brew install xcodegen
 ```
 
 ```bash
-cd ios && xcodegen generate && pod install && open TV.xcworkspace
+cd ios && xcodegen generate && open TV.xcodeproj
 ```
 
 В Xcode: таргет **TV** → Signing & Capabilities → выберите свою команду (Team). Затем Product → Archive → Distribute App → App Store Connect → Upload.
-Открывайте именно `TV.xcworkspace` (не `.xcodeproj`), иначе не подключится VLC.
+При первом открытии Xcode скачает пакет MPVKit (около 200 МБ) — дождитесь окончания (прогресс внизу окна).
 
 ## Скриншоты
 
@@ -88,4 +87,4 @@ cd ios && xcodegen generate && pod install && open TV.xcworkspace
 
 ## Лицензии
 
-VLC-движок — MobileVLCKit (LGPL 2.1, VideoLAN), подключается динамической библиотекой через CocoaPods. Логотипы каналов — открытая база iptv-org.
+Плеер MPV — MPVKit (mpv + FFmpeg, LGPL), подключается через Swift Package Manager. Логотипы каналов — открытая база iptv-org.

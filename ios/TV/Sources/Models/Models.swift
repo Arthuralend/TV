@@ -1,7 +1,8 @@
 import Foundation
 
 struct Channel: Identifiable, Hashable, Codable {
-    var id: String { url + "|" + name }
+    /// Stored (not computed): lists of thousands of channels compare ids constantly.
+    let id: String
     var name: String
     var url: String
     var logo: String?
@@ -12,6 +13,37 @@ struct Channel: Identifiable, Hashable, Codable {
     var catchup: String?
     var catchupSource: String?
     var catchupDays: Int?
+
+    init(name: String, url: String, logo: String? = nil, group: String, tvgId: String? = nil,
+         tvgName: String? = nil, userAgent: String? = nil) {
+        self.id = url + "|" + name
+        self.name = name
+        self.url = url
+        self.logo = logo
+        self.group = group
+        self.tvgId = tvgId
+        self.tvgName = tvgName
+        self.userAgent = userAgent
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, url, logo, group, tvgId, tvgName, userAgent, catchup, catchupSource, catchupDays
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        url = try c.decode(String.self, forKey: .url)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? url + "|" + name
+        logo = try c.decodeIfPresent(String.self, forKey: .logo)
+        group = try c.decode(String.self, forKey: .group)
+        tvgId = try c.decodeIfPresent(String.self, forKey: .tvgId)
+        tvgName = try c.decodeIfPresent(String.self, forKey: .tvgName)
+        userAgent = try c.decodeIfPresent(String.self, forKey: .userAgent)
+        catchup = try c.decodeIfPresent(String.self, forKey: .catchup)
+        catchupSource = try c.decodeIfPresent(String.self, forKey: .catchupSource)
+        catchupDays = try c.decodeIfPresent(Int.self, forKey: .catchupDays)
+    }
 
     var hasArchive: Bool {
         guard let c = catchup?.lowercased(), !c.isEmpty, c != "0", c != "false" else { return false }
@@ -128,7 +160,7 @@ enum AppLinks {
 
 enum Prefs {
     static let engine = "playerEngine"
-    static let networkCaching = "networkCaching"
+    static let epgEnabled = "epgEnabled"
     static let useLogoDB = "useLogoDB"
     static let useDefaultEPG = "useDefaultEPG"
 
@@ -137,7 +169,7 @@ enum Prefs {
         if UserDefaults.standard.string(forKey: engine) == "auto" { UserDefaults.standard.set(PlayerEngine.mpv.rawValue, forKey: engine) }
         UserDefaults.standard.register(defaults: [
             engine: PlayerEngine.mpv.rawValue,
-            networkCaching: 1000,
+            epgEnabled: true,
             useLogoDB: true,
             useDefaultEPG: true,
         ])

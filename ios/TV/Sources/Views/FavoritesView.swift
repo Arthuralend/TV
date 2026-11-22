@@ -2,7 +2,7 @@ import SwiftUI
 
 struct FavoritesView: View {
     @EnvironmentObject private var store: TVStore
-    @EnvironmentObject private var player: PlayerController
+    @Environment(\.playerRef) private var player
     @State private var path: [Channel] = []
 
     var body: some View {
@@ -18,7 +18,7 @@ struct FavoritesView: View {
                         if !favorites.isEmpty {
                             Section {
                                 ForEach(favorites) { c in
-                                    ChannelRow(channel: c, onGuide: { path.append(c) }) { player.open(c, queue: favorites) }
+                                    ChannelRow(channel: c, onGuide: { path.append(c) }) { player?.open(c, queue: favorites) }
                                         .channelActions(c, store: store) { path.append(c) }
                                 }
                             } header: {
@@ -28,7 +28,7 @@ struct FavoritesView: View {
                         if !recents.isEmpty {
                             Section {
                                 ForEach(recents) { c in
-                                    ChannelRow(channel: c, onGuide: { path.append(c) }) { player.open(c, queue: recents) }
+                                    ChannelRow(channel: c, onGuide: { path.append(c) }) { player?.open(c, queue: recents) }
                                         .channelActions(c, store: store) { path.append(c) }
                                 }
                             } header: {
