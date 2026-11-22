@@ -1,0 +1,92 @@
+name: iOS
+
+on:
+  push:
+    paths: ['ios/**', 'android/app/src/main/assets/logos.tsv', '.github/workflows/ios.yml']
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload the build to App Store Connect (TestFlight)"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build (simulator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Tools
+        run: brew install xcodegen
+      - name: Generate project & pods
+        working-directory: ios
+        run: |
+          xcodegen generate
+          pod install
+      - name: Build
+        working-directory: ios
+        run: |
+          xcodebuild -workspace TV.xcworkspace -scheme TV -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build > build.log 2>&1 \
+            || { grep -E "error:|\*\* BUILD" build.log | sort -u | head -150; tail -40 build.log; exit 1; }
+          grep -E "\.swift:[0-9]+:[0-9]+: warning:" build.log | sort -u | head -60 || true
+          tail -3 build.log
+
+  appstore:
+    name: Upload to App Store Connect
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.upload
+    runs-on: macos-15
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check secrets
+        run: |
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then echo "::error::Secret $v is not set (see ios/README.md)"; exit 1; fi
+          done
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Tools
+        run: brew install xcodegen
+      - name: Generate project & pods
+        working-directory: ios
+        run: |
+          xcodegen generate
+          pod install
+      - name: App Store Connect API key
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          KEY="$RUNNER_TEMP/keys/AuthKey_$ASC_KEY_ID.p8"
+          if echo "$ASC_KEY_P8" | grep -q "BEGIN PRIVATE KEY"; then printf '%s\n' "$ASC_KEY_P8" > "$KEY"; else echo "$ASC_KEY_P8" | base64 --decode > "$KEY"; fi
+          echo "ASC_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+      - name: Archive
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild -workspace TV.xcworkspace -scheme TV -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/TV.xcarchive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            archive | tail -40
+      - name: Upload
+        working-directory: ios
+        run: |
+          set -o pipefail
+          sed "s/TEAM_ID/$APPLE_TEAM_ID/" ExportOptions.plist > build/ExportOptions.plist
+          xcodebuild -exportArchive -archivePath build/TV.xcarchive \
+            -exportOptionsPlist build/ExportOptions.plist -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" | tail -40
+          echo "Uploaded build ${{ github.run_number }}. It appears in App Store Connect → TestFlight after processing (10–30 min)."
