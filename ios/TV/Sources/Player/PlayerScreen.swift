@@ -403,7 +403,7 @@ private struct ChannelListOverlay: View {
                     .frame(width: min(400, geo.size.width * (landscape ? 0.45 : 0.86)))
             }
         }
-        .ignoresSafeArea(edges: landscape ? .all : [])
+        .ignoresSafeArea(edges: landscape ? .vertical : [])   // keep clear of the camera / Dynamic Island
         .gesture(
             DragGesture(minimumDistance: 30).onEnded { v in
                 if v.translation.width > 60, abs(v.translation.width) > abs(v.translation.height) {
@@ -536,7 +536,7 @@ private struct GroupListOverlay: View {
                     .onTapGesture { player.showGroupList = false }
             }
         }
-        .ignoresSafeArea(edges: landscape ? .all : [])
+        .ignoresSafeArea(edges: landscape ? .vertical : [])   // keep clear of the camera / Dynamic Island
         .gesture(
             DragGesture(minimumDistance: 30).onEnded { v in
                 if v.translation.width < -60, abs(v.translation.width) > abs(v.translation.height) {
