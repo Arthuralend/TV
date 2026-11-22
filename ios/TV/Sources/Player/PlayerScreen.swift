@@ -22,7 +22,13 @@ struct PlayerScreen: View {
                     PlayerInfoPanel()
                 }
             }
+            if player.showChannelList {
+                ChannelListOverlay(landscape: landscape)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .zIndex(1)
+            }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.9), value: player.showChannelList)
         .statusBarHidden(landscape)
         .persistentSystemOverlays(landscape ? .hidden : .automatic)
         .preferredColorScheme(.dark)
@@ -70,8 +76,8 @@ struct PlayerScreen: View {
             DragGesture(minimumDistance: 40).onEnded { v in
                 let dx = v.translation.width, dy = v.translation.height
                 if abs(dx) > abs(dy) * 1.5 {
-                    player.step(dx < 0 ? 1 : -1)
-                    showControls()
+                    // right-to-left opens the channel list, left-to-right closes it
+                    player.showChannelList = dx < 0
                 } else if dy > 120, !landscape {
                     player.close()
                 }
@@ -189,6 +195,12 @@ private struct PlayerControls: View {
                 }
             }
             Spacer()
+            Button {
+                player.showChannelList = true
+            } label: {
+                Image(systemName: "list.bullet").font(.title3.weight(.semibold)).frame(width: 36, height: 36)
+            }
+            .accessibilityLabel(Text("Channels"))
             AirPlayButton().frame(width: 36, height: 36)
             if player.active == .system && player.pipPossible {
                 Button {
@@ -357,5 +369,109 @@ private struct PlayerInfoPanel: View {
         } else {
             Theme.background
         }
+    }
+}
+
+/// Translucent channel list over the video (swipe right-to-left on the video, or the list button).
+private struct ChannelListOverlay: View {
+    let landscape: Bool
+    @EnvironmentObject private var player: PlayerController
+    @EnvironmentObject private var store: TVStore
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                // tapping the free area closes the list
+                Color.black.opacity(0.001)
+                    .contentShape(Rectangle())
+                    .onTapGesture { player.showChannelList = false }
+                panel
+                    .frame(width: min(400, geo.size.width * (landscape ? 0.45 : 0.86)))
+            }
+        }
+        .ignoresSafeArea(edges: landscape ? .all : [])
+        .gesture(
+            DragGesture(minimumDistance: 30).onEnded { v in
+                if v.translation.width > 60, abs(v.translation.width) > abs(v.translation.height) {
+                    player.showChannelList = false
+                }
+            }
+        )
+    }
+
+    private var panel: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Channels").font(.headline)
+                Spacer()
+                Button {
+                    player.showChannelList = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill").font(.title2).symbolRenderingMode(.hierarchical)
+                }
+                .accessibilityLabel(Text("Close"))
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, landscape ? 16 : 12)
+            .padding(.bottom, 8)
+            TimelineView(.periodic(from: .now, by: 60)) { ctx in
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(player.queue) { c in
+                                row(c, now: ctx.date).id(c.id)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 16)
+                    }
+                    .onAppear {
+                        if let id = player.channel?.id { proxy.scrollTo(id, anchor: .center) }
+                    }
+                }
+            }
+        }
+        .background(.ultraThinMaterial)
+        .background(Color.black.opacity(0.35))
+        .environment(\.colorScheme, .dark)
+    }
+
+    private func row(_ c: Channel, now: Date) -> some View {
+        let current = c.id == player.channel?.id
+        let programme = store.epg.programme(for: c, at: now)
+        return Button {
+            if !current { player.play(c) }
+            player.showChannelList = false
+        } label: {
+            HStack(spacing: 10) {
+                LogoView(channel: c, size: 38)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: c.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    if let programme {
+                        Text(verbatim: programme.title)
+                            .font(.caption)
+                            .foregroundStyle(Color.white.opacity(0.7))
+                            .lineLimit(1)
+                        ProgressLine(value: programme.progress(at: now), height: 2)
+                            .frame(maxWidth: 160)
+                    }
+                }
+                Spacer(minLength: 0)
+                if current {
+                    Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundStyle(Theme.orange)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(current ? Theme.orange.opacity(0.25) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.white)
     }
 }

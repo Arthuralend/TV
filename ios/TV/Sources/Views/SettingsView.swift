@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var store: TVStore
     @AppStorage(Prefs.engine) private var engine = PlayerEngine.auto.rawValue
-    @AppStorage(Prefs.networkCaching) private var networkCaching = 1500
+    @AppStorage(Prefs.networkCaching) private var networkCaching = 1000
     @AppStorage(Prefs.useLogoDB) private var useLogoDB = true
     @AppStorage(Prefs.useDefaultEPG) private var useDefaultEPG = true
     @State private var showEditor = false

@@ -135,7 +135,7 @@ enum Prefs {
     static func register() {
         UserDefaults.standard.register(defaults: [
             engine: PlayerEngine.auto.rawValue,
-            networkCaching: 1500,
+            networkCaching: 1000,
             useLogoDB: true,
             useDefaultEPG: true,
         ])
