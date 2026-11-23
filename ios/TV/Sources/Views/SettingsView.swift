@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var store: TVStore
-    @AppStorage(Prefs.engine) private var engine = PlayerEngine.mpv.rawValue
+    @AppStorage(Prefs.networkCaching) private var networkCaching = 1000
     @AppStorage(Prefs.useLogoDB) private var useLogoDB = true
     @AppStorage(Prefs.useDefaultEPG) private var useDefaultEPG = true
     @AppStorage(Prefs.epgEnabled) private var epgEnabled = true
@@ -82,13 +82,17 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("Player", selection: $engine) {
-                        ForEach(PlayerEngine.allCases) { Text($0.title).tag($0.rawValue) }
+                    Stepper(value: $networkCaching, in: 300...10000, step: 500) {
+                        HStack {
+                            Text("Buffer")
+                            Spacer()
+                            Text(verbatim: "\(networkCaching) ms").foregroundStyle(.secondary).monospacedDigit()
+                        }
                     }
                 } header: {
                     Text("Playback")
                 } footer: {
-                    Text("MPV is the fastest and most reliable for IPTV, but has no Picture in Picture. The system player supports Picture in Picture and AirPlay but plays only HLS (.m3u8); if it cannot open a channel, MPV is used.")
+                    Text("Channels play in VLC. A smaller buffer starts channels faster; increase it if the picture stutters.")
                 }
 
                 Section {

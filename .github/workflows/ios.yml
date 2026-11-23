@@ -21,13 +21,15 @@ jobs:
           xcode-version: latest-stable
       - name: Tools
         run: brew install xcodegen
-      - name: Generate project
+      - name: Generate project & pods
         working-directory: ios
-        run: xcodegen generate
+        run: |
+          xcodegen generate
+          pod install
       - name: Build
         working-directory: ios
         run: |
-          xcodebuild -project TV.xcodeproj -scheme TV -configuration Debug \
+          xcodebuild -workspace TV.xcworkspace -scheme TV -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO build > build.log 2>&1 \
             || { grep -E "error:|\*\* BUILD" build.log | sort -u | head -150; tail -40 build.log; exit 1; }
@@ -56,9 +58,11 @@ jobs:
           xcode-version: latest-stable
       - name: Tools
         run: brew install xcodegen
-      - name: Generate project
+      - name: Generate project & pods
         working-directory: ios
-        run: xcodegen generate
+        run: |
+          xcodegen generate
+          pod install
       - name: App Store Connect API key
         run: |
           mkdir -p "$RUNNER_TEMP/keys"
@@ -69,7 +73,7 @@ jobs:
         working-directory: ios
         run: |
           set -o pipefail
-          xcodebuild -project TV.xcodeproj -scheme TV -configuration Release \
+          xcodebuild -workspace TV.xcworkspace -scheme TV -configuration Release \
             -destination 'generic/platform=iOS' -archivePath build/TV.xcarchive \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \

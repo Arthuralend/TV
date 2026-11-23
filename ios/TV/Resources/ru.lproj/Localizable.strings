@@ -13,7 +13,6 @@
 "Archive playback when your provider supports it" = "Просмотр архива, если его поддерживает провайдер";
 "Audio Track" = "Аудиодорожка";
 "Auto-update" = "Автообновление";
-"Automatic" = "Автоматически";
 "Back 30 Seconds" = "Назад на 30 секунд";
 "Back to Live" = "Вернуться в прямой эфир";
 "Built-in guide sources" = "Встроенные источники телегида";
@@ -77,10 +76,7 @@
 "Optional" = "Необязательно";
 "Password" = "Пароль";
 "Pause" = "Пауза";
-"Picture in Picture" = "Картинка в картинке";
-"Picture in Picture and AirPlay" = "Картинка в картинке и AirPlay";
 "Play" = "Воспроизвести";
-"Play in System Player" = "Открыть в системном плеере";
 "Playback" = "Воспроизведение";
 "Player" = "Плеер";
 "Playlist" = "Плейлист";
@@ -104,7 +100,6 @@
 "Starts at %@: %@" = "Начало в %1$@: %2$@";
 "Support" = "Поддержка";
 "Swipe left on a channel or touch and hold it to add it to Favorites." = "Смахните канал влево или нажмите и удерживайте его, чтобы добавить в избранное.";
-"System (AVPlayer)" = "Системный (AVPlayer)";
 "TV Guide" = "Телегид";
 "TV does not provide any channels or streams. Use only playlists you have the right to watch." = "TV не предоставляет каналы или трансляции. Используйте только те плейлисты, которые вы имеете право смотреть.";
 "TV guide (XMLTV) link" = "Ссылка на телегид (XMLTV)";
@@ -116,7 +111,6 @@
 "The stream did not start in time" = "Поток не запустился вовремя";
 "Today" = "Сегодня";
 "Tomorrow" = "Завтра";
-"Try System Player" = "Системный плеер";
 "Type" = "Тип";
 "Ungrouped" = "Без группы";
 "Update TV Guide Now" = "Обновить телегид";
@@ -136,10 +130,6 @@
 "Processing the TV guide…" = "Обработка телегида…";
 "Downloading…" = "Скачивание…";
 "Processing…" = "Обработка…";
-"MPV (recommended)" = "MPV (рекомендуется)";
-"MPV is the fastest and most reliable for IPTV, but has no Picture in Picture. The system player supports Picture in Picture and AirPlay but plays only HLS (.m3u8); if it cannot open a channel, MPV is used." = "MPV — самый быстрый и стабильный для IPTV, но без «картинки в картинке». Системный плеер поддерживает «картинку в картинке» и AirPlay, но играет только HLS (.m3u8); если он не может открыть канал, включается MPV.";
-"Play in MPV" = "Открыть в MPV";
-"Other Player" = "Другой плеер";
 "Groups" = "Группы";
 "All Channels" = "Все каналы";
 "Track %lld" = "Дорожка %lld";
@@ -149,3 +139,6 @@
 "TV guide is off" = "Телегид выключен";
 "Turn it on to see what's on now and next." = "Включите его, чтобы видеть, что идёт сейчас и что будет дальше.";
 "Turn On" = "Включить";
+"Buffer" = "Буфер";
+"Channels play in VLC. A smaller buffer starts channels faster; increase it if the picture stutters." = "Каналы воспроизводятся через VLC. Меньший буфер — быстрее старт каналов; увеличьте его, если картинка подтормаживает.";
+"Swipe over the video for channel and group lists" = "Свайп по видео — списки каналов и групп";

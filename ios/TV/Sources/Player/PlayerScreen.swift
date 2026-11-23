@@ -1,4 +1,3 @@
-import AVKit
 import SwiftUI
 import UIKit
 
@@ -104,12 +103,6 @@ struct PlayerScreen: View {
             Text(verbatim: message).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             HStack(spacing: 12) {
                 Button("Retry") { player.retry() }.buttonStyle(.borderedProminent)
-                Menu {
-                    EngineButtons()
-                } label: {
-                    Text("Other Player")
-                }
-                .buttonStyle(.bordered)
             }
         }
         .padding()
@@ -127,7 +120,7 @@ struct PlayerScreen: View {
     }
 }
 
-/// Hosts the active engine's video view.
+/// Hosts the VLC video view.
 struct VideoSurface: UIViewRepresentable {
     @ObservedObject var player: PlayerController
 
@@ -142,14 +135,7 @@ struct VideoSurface: UIViewRepresentable {
     func updateUIView(_ v: UIView, context: Context) { attach(to: v) }
 
     private func attach(to v: UIView) {
-        let target: UIView
-        switch player.active {
-        case .system: target = player.avView
-        case .mpv, .none: target = player.mpv.view
-        }
-        for other in [player.avView, player.mpv.view] where other !== target && other.superview === v {
-            other.removeFromSuperview()
-        }
+        let target = player.videoView
         if target.superview !== v {
             target.removeFromSuperview()
             target.frame = v.bounds
@@ -157,18 +143,6 @@ struct VideoSurface: UIViewRepresentable {
             v.addSubview(target)
         }
     }
-}
-
-struct AirPlayButton: UIViewRepresentable {
-    func makeUIView(context: Context) -> AVRoutePickerView {
-        let v = AVRoutePickerView()
-        v.tintColor = .white
-        v.activeTintColor = UIColor(Theme.orange)
-        v.prioritizesVideoDevices = true
-        return v
-    }
-
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
 private struct PlayerControls: View {
@@ -218,15 +192,6 @@ private struct PlayerControls: View {
                 Image(systemName: "list.bullet").font(.title3.weight(.semibold)).frame(width: 36, height: 36)
             }
             .accessibilityLabel(Text("Channels"))
-            AirPlayButton().frame(width: 36, height: 36)
-            if player.active == .system && player.pipPossible {
-                Button {
-                    player.togglePiP()
-                } label: {
-                    Image(systemName: "pip.enter").font(.title3).frame(width: 36, height: 36)
-                }
-                .accessibilityLabel(Text("Picture in Picture"))
-            }
             menu
         }
     }
@@ -242,11 +207,6 @@ private struct PlayerControls: View {
                 .pickerStyle(.menu)
             }
             Toggle(isOn: $player.fill) { Label("Fill Screen", systemImage: "arrow.up.left.and.arrow.down.right") }
-            Menu {
-                EngineButtons()
-            } label: {
-                Label("Player", systemImage: "arrow.triangle.2.circlepath")
-            }
             if let c = player.channel {
                 Button {
                     store.toggleFavorite(c)
@@ -500,20 +460,6 @@ private struct ChannelListOverlay: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(Color.white)
-    }
-}
-
-/// Engine choices for the current channel (other than the one playing).
-private struct EngineButtons: View {
-    @EnvironmentObject private var player: PlayerController
-
-    var body: some View {
-        if player.active != .mpv {
-            Button { player.retry(engine: .mpv) } label: { Text("Play in MPV") }
-        }
-        if player.active != .system {
-            Button { player.retry(engine: .system) } label: { Text("Play in System Player") }
-        }
     }
 }
 

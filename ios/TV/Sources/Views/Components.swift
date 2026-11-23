@@ -87,7 +87,7 @@ struct WelcomeView: View {
                     feature("list.bullet.rectangle", "M3U / M3U8 links, files and Xtream Codes")
                     feature("calendar", "TV guide (XMLTV) with what's on now and next")
                     feature("clock.arrow.circlepath", "Archive playback when your provider supports it")
-                    feature("pip", "Picture in Picture and AirPlay")
+                    feature("hand.draw", "Swipe over the video for channel and group lists")
                 }
                 .padding()
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.card))
