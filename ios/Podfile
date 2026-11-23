@@ -1,0 +1,21 @@
+platform :ios, '16.0'
+project 'TV.xcodeproj'
+
+target 'TV' do
+  use_frameworks!
+  # VLC engine: plays MPEG-TS, RTMP, UDP and other streams the system player cannot.
+  pod 'MobileVLCKit', '~> 3.6'
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |t|
+    t.build_configurations.each do |c|
+      c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+    end
+  end
+  # App Store Connect rejects binaries that still contain bitcode.
+  Dir.glob(File.join(installer.sandbox.root, 'MobileVLCKit', '**', 'MobileVLCKit.framework', 'MobileVLCKit')).each do |bin|
+    next if File.symlink?(bin)
+    system('xcrun', 'bitcode_strip', bin, '-r', '-o', bin)
+  end
+end

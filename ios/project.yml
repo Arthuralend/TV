@@ -1,5 +1,5 @@
 # iOS app «TV» (App Store: «TV - IPTV & TV Guide»).
-# Generate the Xcode project:  cd ios && xcodegen generate && pod install
+# Generate the Xcode project:  cd ios && xcodegen generate && pod install && pod install
 name: TV
 options:
   bundleIdPrefix: com.arthuralend
@@ -13,10 +13,6 @@ settings:
     CURRENT_PROJECT_VERSION: "2"
     # Your Apple Developer Team ID (10 characters), or pass DEVELOPMENT_TEAM=... to xcodebuild
     DEVELOPMENT_TEAM: ""
-packages:
-  MPVKit:
-    url: https://github.com/mpvkit/MPVKit
-    exactVersion: 1.1.0-n9.0.2
 targets:
   TV:
     type: application
@@ -26,9 +22,6 @@ targets:
       - TV/Resources
       - path: ../android/app/src/main/assets/logos.tsv
         buildPhase: resources
-    dependencies:
-      - package: MPVKit
-        product: MPVKit
     info:
       path: TV/Info.plist
       properties:
@@ -43,7 +36,6 @@ targets:
         LSRequiresIPhoneOS: true
         UILaunchScreen:
           UIColorName: LaunchBackground
-        UIBackgroundModes: [audio]
         UIStatusBarStyle: UIStatusBarStyleLightContent
         UIViewControllerBasedStatusBarAppearance: true
         UIApplicationSupportsIndirectInputEvents: true

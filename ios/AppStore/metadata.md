@@ -25,10 +25,10 @@
 Плеер M3U и телепрограмма
 
 **Promotional text (170):**
-Смотрите свои IPTV-каналы с удобной телепрограммой: что идёт сейчас, что будет дальше, архив передач, напоминания, «картинка в картинке» и AirPlay.
+Смотрите свои IPTV-каналы с удобной телепрограммой: что идёт сейчас, что будет дальше, архив передач, напоминания и быстрое переключение каналов.
 
 **Keywords (100, через запятую без пробелов):**
-iptv,m3u,m3u8,xtream,телегид,телепрограмма,epg,xmltv,плеер,тв,каналы,онлайн,архив,плейлист,mpv
+iptv,m3u,m3u8,xtream,телегид,телепрограмма,epg,xmltv,плеер,тв,каналы,онлайн,архив,плейлист,vlc
 
 **Description / Описание (4000):**
 ```
@@ -49,11 +49,10 @@ TV — простой и быстрый плеер для ваших IPTV-пле
 • Поддержка XMLTV (.xml и .xml.gz), автоматическое сопоставление каналов
 
 ПРОСМОТР
-• Системный плеер для HLS: «картинка в картинке» и AirPlay
-• Встроенный плеер MPV: быстрый старт, MPEG-TS и другие форматы
+• Встроенный плеер VLC: HLS, MPEG-TS и другие форматы
+• Списки каналов и групп прямо поверх видео — свайпом
 • Архив передач (catch-up), если его поддерживает провайдер
-• Переключение каналов свайпом, выбор аудиодорожки, режим «заполнить экран»
-• Звук продолжает играть в фоне
+• Выбор аудиодорожки, режим «заполнить экран»
 
 КОНФИДЕНЦИАЛЬНОСТЬ
 Никакой регистрации, рекламы и слежки. Ваши плейлисты хранятся только на устройстве.
@@ -71,10 +70,10 @@ TV — это только плеер. Приложение не содержи�
 M3U Player with Live TV Guide
 
 **Promotional text (170):**
-Watch your own IPTV channels with a clean TV guide: what's on now and next, catch-up, reminders, Picture in Picture and AirPlay.
+Watch your own IPTV channels with a clean TV guide: what's on now and next, catch-up, reminders and fast channel switching.
 
 **Keywords (100):**
-iptv,m3u,m3u8,xtream,epg,xmltv,guide,player,live,channels,playlist,catchup,mpv,stream,tv guide
+iptv,m3u,m3u8,xtream,epg,xmltv,guide,player,live,channels,playlist,catchup,vlc,stream,tv guide
 
 **Description (4000):**
 ```
@@ -95,11 +94,10 @@ TV GUIDE
 • XMLTV support (.xml and .xml.gz) with automatic channel matching
 
 WATCHING
-• System player for HLS with Picture in Picture and AirPlay
-• Built-in MPV player: fast start, MPEG-TS and other formats
+• Built-in VLC player: HLS, MPEG-TS and other formats
+• Channel and group lists right over the video — just swipe
 • Catch-up (archive) when your provider supports it
-• Swipe to change channels, audio track selection, fill screen
-• Audio keeps playing in the background
+• Audio track selection, fill screen
 
 PRIVACY
 No sign-up, no ads, no tracking. Your playlists stay on your device.
@@ -145,10 +143,10 @@ How to test:
 1. Launch the app, tap "Add Playlist".
 2. Choose "Link" and paste this test playlist (Apple's public HLS sample streams):
    https://arthuralend.github.io/TV/demo.m3u
-3. Tap Save. Tap any channel to play. Picture in Picture and AirPlay buttons are at the top of the player.
+3. Tap Save. Tap any channel to play. Swipe right-to-left over the video for the channel list, left-to-right for groups.
 4. The "TV Guide" tab shows programme data when a playlist provides an XMLTV guide (the demo streams have none).
 
-NSAllowsArbitraryLoads is enabled because many IPTV providers and XMLTV guides are only available over plain HTTP, and the user enters these addresses themselves. The app uses the "audio" background mode so the TV sound keeps playing in the background and in Picture in Picture.
+NSAllowsArbitraryLoads is enabled because many IPTV providers and XMLTV guides are only available over plain HTTP, and the user enters these addresses themselves.
 Reminders use local notifications only.
 ```
 
