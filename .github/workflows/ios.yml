@@ -1,18 +1,39 @@
 name: iOS
 
+# Push to ios/**: checks that the app compiles.
+# Run by hand (Actions › iOS › Run workflow): builds, signs and uploads the app to App Store Connect,
+# takes App Store screenshots in the simulator and fills in the App Store listing
+# (texts, links, categories, age rating, review notes, screenshots) from ios/AppStore/listing.
+# Nothing is submitted for review: that stays a button in App Store Connect.
+#
+# Secrets (Settings › Secrets and variables › Actions) — the same App Store Connect API key
+# as in the Documents-Tabes repository:
+#   APPSTORE_API_KEY_ID   Key ID
+#   APPSTORE_API_ISSUER   Issuer ID
+#   APPSTORE_API_KEY_P8   the AuthKey_….p8 file's text
+#   APPLE_TEAM_ID         optional: found from the bundle ID when missing
+
 on:
   push:
     paths: ['ios/**', 'android/app/src/main/assets/logos.tsv', '.github/workflows/ios.yml']
   workflow_dispatch:
     inputs:
       upload:
-        description: "Upload the build to App Store Connect (TestFlight)"
+        description: "Build and upload the app to App Store Connect"
         type: boolean
         default: true
+      listing:
+        description: "Take screenshots and fill in the App Store listing"
+        type: boolean
+        default: true
+
+env:
+  BUNDLE_ID: com.arthuralend.tv
 
 jobs:
   build:
     name: Build (simulator)
+    if: github.event_name == 'push'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -38,21 +59,75 @@ jobs:
 
   appstore:
     name: Upload to App Store Connect
-    needs: build
     if: github.event_name == 'workflow_dispatch' && inputs.upload
     runs-on: macos-15
+    timeout-minutes: 90
     env:
-      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      ASC_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER }}
+      ASC_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
       - name: Check secrets
         run: |
-          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
-            if [ -z "${!v}" ]; then echo "::error::Secret $v is not set (see ios/README.md)"; exit 1; fi
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            [ -n "${!v}" ] || { echo "::error::Secret for $v is not set (see ios/README.md)"; exit 1; }
           done
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Tools
+        run: |
+          brew install xcodegen
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography
+      - name: API key and team
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          KEY="$RUNNER_TEMP/keys/AuthKey_$ASC_KEY_ID.p8"
+          if printf '%s' "$ASC_KEY_P8" | grep -q "BEGIN PRIVATE KEY"; then printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          else printf '%s' "$ASC_KEY_P8" | tr -d ' \r\n\t' | base64 --decode > "$KEY"; fi
+          echo "ASC_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+          TEAM="$(python3 ios/AppStore/asc.py team "$BUNDLE_ID" "$KEY")"
+          [ -n "$TEAM" ] || { echo "::error::could not find the Team ID; add the APPLE_TEAM_ID secret"; exit 1; }
+          echo "::add-mask::$TEAM"
+          echo "TEAM_ID=$TEAM" >> "$GITHUB_ENV"
+      - name: Generate project & pods
+        working-directory: ios
+        run: |
+          xcodegen generate
+          pod install
+      - name: Archive
+        working-directory: ios
+        run: |
+          xcodebuild -workspace TV.xcworkspace -scheme TV -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/TV.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            archive > archive.log 2>&1 \
+            || { grep -E "error:|\*\* ARCHIVE" archive.log | sort -u | head -80; tail -40 archive.log; exit 1; }
+          tail -3 archive.log
+      - name: Upload
+        working-directory: ios
+        run: |
+          sed "s/TEAM_ID/$TEAM_ID/" ExportOptions.plist > build/ExportOptions.plist
+          xcodebuild -exportArchive -archivePath build/TV.xcarchive \
+            -exportOptionsPlist build/ExportOptions.plist -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            > export.log 2>&1 || { grep -iE "error" export.log | sort -u | head -60; tail -40 export.log; exit 1; }
+          tail -5 export.log
+          echo "Uploaded build ${{ github.run_number }}: it appears in App Store Connect › TestFlight after processing (10–30 min)."
+
+  screenshots:
+    name: Screenshots (simulator)
+    if: github.event_name == 'workflow_dispatch' && inputs.listing
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
@@ -63,30 +138,89 @@ jobs:
         run: |
           xcodegen generate
           pod install
-      - name: App Store Connect API key
+      - name: Simulator
         run: |
-          mkdir -p "$RUNNER_TEMP/keys"
-          KEY="$RUNNER_TEMP/keys/AuthKey_$ASC_KEY_ID.p8"
-          if echo "$ASC_KEY_P8" | grep -q "BEGIN PRIVATE KEY"; then printf '%s\n' "$ASC_KEY_P8" > "$KEY"; else echo "$ASC_KEY_P8" | base64 --decode > "$KEY"; fi
-          echo "ASC_KEY_PATH=$KEY" >> "$GITHUB_ENV"
-      - name: Archive
+          # the newest "Pro Max" iPhone = 6.9" screenshots (1320 × 2868)
+          UDID="$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys,re
+          d=json.load(sys.stdin)["devices"]
+          c=[(r,x) for r,l in d.items() if "iOS" in r for x in l if re.search(r"iPhone \d+ Pro Max",x["name"])]
+          c.sort(key=lambda t:(t[0],t[1]["name"]))
+          print(c[-1][1]["udid"])')"
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 --dataNetwork wifi
+      - name: Build for the simulator
         working-directory: ios
         run: |
-          set -o pipefail
-          xcodebuild -workspace TV.xcworkspace -scheme TV -configuration Release \
-            -destination 'generic/platform=iOS' -archivePath build/TV.xcarchive \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            archive | tail -40
-      - name: Upload
-        working-directory: ios
+          xcodebuild -workspace TV.xcworkspace -scheme TV -configuration Debug \
+            -destination "id=$UDID" -derivedDataPath build CODE_SIGNING_ALLOWED=NO build > build.log 2>&1 \
+            || { grep -E "error:" build.log | sort -u | head -50; exit 1; }
+      - name: Take screenshots
         run: |
-          set -o pipefail
-          sed "s/TEAM_ID/$APPLE_TEAM_ID/" ExportOptions.plist > build/ExportOptions.plist
-          xcodebuild -exportArchive -archivePath build/TV.xcarchive \
-            -exportOptionsPlist build/ExportOptions.plist -exportPath build/export \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" | tail -40
-          echo "Uploaded build ${{ github.run_number }}. It appears in App Store Connect → TestFlight after processing (10–30 min)."
+          APP="$(ls -d ios/build/Build/Products/Debug-iphonesimulator/TV.app)"
+          OUT=ios/AppStore/listing/screenshots
+          shot() {  # locale lang name screen wait
+            xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
+            xcrun simctl launch "$UDID" "$BUNDLE_ID" -AppleLanguages "($2)" -AppleLocale "$2" -screenshotScreen "$4" >/dev/null
+            sleep "$5"
+            xcrun simctl io "$UDID" screenshot "$OUT/$1/$3.png" >/dev/null
+          }
+          for loc in ru:ru en-US:en; do
+            L="${loc%%:*}"; LANG_="${loc##*:}"
+            mkdir -p "$OUT/$L"
+            xcrun simctl uninstall "$UDID" "$BUNDLE_ID" 2>/dev/null || true
+            xcrun simctl install "$UDID" "$APP"
+            shot "$L" "$LANG_" 01-welcome welcome 6
+            shot "$L" "$LANG_" 02-channels channels 15
+            shot "$L" "$LANG_" 03-player player 20
+            shot "$L" "$LANG_" 04-settings settings 8
+          done
+          ls -la "$OUT"/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ios/AppStore/listing/screenshots
+
+  listing:
+    name: App Store listing
+    needs: screenshots
+    if: github.event_name == 'workflow_dispatch' && inputs.listing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: screenshots
+          path: ios/AppStore/listing/screenshots
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: fastlane
+        run: gem install fastlane --no-document
+      - name: Upload the listing
+        env:
+          API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPSTORE_API_ISSUER }}
+          API_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
+          FASTLANE_SKIP_UPDATE_CHECK: "1"
+          FASTLANE_HIDE_CHANGELOG: "1"
+        run: |
+          set -euo pipefail
+          for v in API_KEY_ID API_ISSUER API_KEY_P8; do
+            [ -n "${!v}" ] || { echo "::error::secret for $v is missing (see ios/README.md)"; exit 1; }
+          done
+          KEY="$RUNNER_TEMP/asc-key.json"
+          jq -n --arg id "$API_KEY_ID" --arg iss "$API_ISSUER" --arg key "$API_KEY_P8" \
+            '{key_id: $id, issuer_id: $iss, key: $key, in_house: false}' > "$KEY"
+          VERSION="$(grep -E '^ *MARKETING_VERSION:' ios/project.yml | head -1 | sed -E 's/.*"(.*)".*/\1/')"
+          cd ios/AppStore/listing
+          fastlane deliver --api_key_path "$KEY" --platform ios \
+            --app_identifier "$BUNDLE_ID" --app_version "$VERSION" \
+            --metadata_path metadata --app_rating_config_path rating.json \
+            --skip_binary_upload true \
+            --screenshots_path screenshots --overwrite_screenshots true \
+            --submit_for_review false --run_precheck_before_submit false --force true
+          rm -f "$KEY"

@@ -1,0 +1,13 @@
+TV is a media player for IPTV playlists that the user already owns (M3U/M3U8 links, files, Xtream Codes logins).
+The app does NOT include, sell, or link to any channels or streams, and it does not promote any IPTV service.
+No account is required.
+
+How to test:
+1. Launch the app, tap "Add Playlist".
+2. Choose "Link" and paste this test playlist (Apple's public HLS sample streams):
+   https://arthuralend.github.io/TV/demo.m3u
+3. Tap Save. Tap any channel to play. Swipe right-to-left over the video for the channel list, left-to-right for groups.
+4. The "TV Guide" tab shows programme data when a playlist provides an XMLTV guide (the demo streams have none).
+
+NSAllowsArbitraryLoads is enabled because many IPTV providers and XMLTV guides are only available over plain HTTP, and the user enters these addresses themselves.
+Reminders use local notifications only.

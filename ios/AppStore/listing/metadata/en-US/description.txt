@@ -1,0 +1,27 @@
+TV is a simple, fast player for your own IPTV playlists with a built-in TV guide.
+
+PLAYLISTS
+• M3U and M3U8 links
+• Playlist files from the Files app or the Share menu
+• Xtream Codes accounts (server, username, password)
+• Several playlists with quick switching
+• Channel groups, search, favorites and recently watched
+
+TV GUIDE
+• What's on now and next, right in the channel list
+• Guide screen: what's on every channel at the time you choose
+• Each channel's schedule by day with programme descriptions
+• Reminders before a programme starts
+• XMLTV support (.xml and .xml.gz) with automatic channel matching
+
+WATCHING
+• Built-in VLC player: HLS, MPEG-TS and other formats
+• Channel and group lists right over the video — just swipe
+• Catch-up (archive) when your provider supports it
+• Audio track selection, fill screen
+
+PRIVACY
+No sign-up, no ads, no tracking. Your playlists stay on your device.
+
+IMPORTANT
+TV is a player only. It does not include or sell any TV channels. You need a playlist from your IPTV provider. Only watch content you have the right to view.

@@ -9,7 +9,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0.0"
+    MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "3"
     # Your Apple Developer Team ID (10 characters), or pass DEVELOPMENT_TEAM=... to xcodebuild
     DEVELOPMENT_TEAM: ""
