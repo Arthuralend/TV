@@ -49,20 +49,22 @@ GitHub → репозиторий **Arthuralend/TV** → Settings → Pages → 
 
 Если имя «TV - IPTV & TV Guide» окажется занято, App Store Connect не даст его сохранить — подойдут варианты «TV: IPTV & TV Guide» или «TV — IPTV Player & TV Guide». Название на iPhone («TV») от этого не зависит.
 
-## 3а. Сборка и загрузка без Mac — через GitHub Actions
+## 3а. Сборка, скриншоты и страница в App Store без Mac — через GitHub Actions
 
-1. App Store Connect → Users and Access → Integrations → App Store Connect API → «+», роль **Admin** → скачайте `AuthKey_XXXX.p8`, запишите Key ID и Issuer ID.
-2. Ваш Team ID: developer.apple.com → Membership details.
-3. GitHub → Settings → Secrets and variables → Actions → New repository secret:
-   * `ASC_KEY_ID` — Key ID
-   * `ASC_ISSUER_ID` — Issuer ID
-   * `ASC_KEY_P8` — содержимое файла `.p8` целиком (вместе со строками BEGIN/END)
-   * `APPLE_TEAM_ID` — Team ID
-4. GitHub → Actions → **iOS** → Run workflow (галочка *Upload* включена).
-   Сборка подпишется автоматически и загрузится в App Store Connect; номер сборки = номер запуска.
-5. Через 10–30 минут сборка появится в TestFlight. В карточке версии выберите её в разделе «Build», добавьте скриншоты → **Submit for Review**.
+Используется тот же ключ App Store Connect API, что и в репозитории Documents-Tabes.
 
-Каждый push в папку `ios/` дополнительно проверяет, что проект компилируется (без подписи).
+1. GitHub → **Arthuralend/TV** → Settings → Secrets and variables → Actions → New repository secret:
+   * `APPSTORE_API_KEY_ID` — Key ID
+   * `APPSTORE_API_ISSUER` — Issuer ID
+   * `APPSTORE_API_KEY_P8` — текст файла `AuthKey_….p8` целиком (вместе со строками BEGIN/END)
+   * `APPLE_TEAM_ID` — необязательно: если его нет, Team ID берётся из Bundle ID
+2. Actions → **iOS** → **Run workflow**. Он:
+   * собирает, подписывает и загружает приложение в App Store Connect (номер сборки = номер запуска);
+   * делает скриншоты в симуляторе iPhone 6.9" (русский и английский);
+   * заполняет страницу: названия, описания, ключевые слова, ссылки, категории, возрастной рейтинг, заметки для ревьюера, скриншоты (`ios/AppStore/listing`).
+3. Вручную в App Store Connect остаётся: **App Privacy** → «Data Not Collected», контакт для ревьюера, выбор сборки в версии и кнопка **Submit for Review**.
+
+Для автоматической подписи ключ должен иметь роль **Admin**.
 
 ## 3б. Сборка на Mac в Xcode
 
