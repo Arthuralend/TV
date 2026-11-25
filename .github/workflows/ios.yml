@@ -4,7 +4,8 @@ name: iOS
 # Run by hand (Actions › iOS › Run workflow): builds, signs and uploads the app to App Store Connect,
 # takes App Store screenshots in the simulator and fills in the App Store listing
 # (texts, links, categories, age rating, review notes, screenshots) from ios/AppStore/listing.
-# Nothing is submitted for review: that stays a button in App Store Connect.
+# "prepare" selects the build and fills in review information, content rights, price and countries;
+# "submit" sends the version to App Review. App Privacy can only be answered in App Store Connect.
 #
 # Secrets (Settings › Secrets and variables › Actions) — the same App Store Connect API key
 # as in the Documents-Tabes repository:
@@ -12,6 +13,8 @@ name: iOS
 #   APPSTORE_API_ISSUER   Issuer ID
 #   APPSTORE_API_KEY_P8   the AuthKey_….p8 file's text
 #   APPLE_TEAM_ID         optional: found from the bundle ID when missing
+#   REVIEW_FIRST_NAME, REVIEW_LAST_NAME, REVIEW_PHONE, REVIEW_EMAIL
+#                         contact for App Review (only Apple sees it; kept out of the public repo)
 
 on:
   push:
@@ -26,6 +29,14 @@ on:
         description: "Take screenshots and fill in the App Store listing"
         type: boolean
         default: true
+      prepare:
+        description: "Get the version ready for review (build, review notes, content rights, free, all countries)"
+        type: boolean
+        default: true
+      submit:
+        description: "Submit for App Review (App Privacy must already be answered in App Store Connect)"
+        type: boolean
+        default: false
 
 env:
   BUNDLE_ID: com.arthuralend.tv
@@ -224,3 +235,34 @@ jobs:
             --screenshots_path screenshots --overwrite_screenshots true \
             --submit_for_review false --run_precheck_before_submit false --force true
           rm -f "$KEY"
+
+  release:
+    name: Ready for review
+    needs: [appstore, listing]
+    if: always() && github.event_name == 'workflow_dispatch' && (inputs.prepare || inputs.submit) && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      ASC_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER }}
+      ASC_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
+      REVIEW_FIRST_NAME: ${{ secrets.REVIEW_FIRST_NAME }}
+      REVIEW_LAST_NAME: ${{ secrets.REVIEW_LAST_NAME }}
+      REVIEW_PHONE: ${{ secrets.REVIEW_PHONE }}
+      REVIEW_EMAIL: ${{ secrets.REVIEW_EMAIL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: python3 -m pip install --quiet pyjwt cryptography
+      - name: API key
+        run: |
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          if printf '%s' "$ASC_KEY_P8" | grep -q "BEGIN PRIVATE KEY"; then printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          else printf '%s' "$ASC_KEY_P8" | tr -d ' \r\n\t' | base64 --decode > "$KEY"; fi
+          echo "ASC_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+      - name: Prepare the version
+        if: inputs.prepare
+        run: python3 ios/AppStore/asc.py prepare "$BUNDLE_ID" "$ASC_KEY_PATH"
+      - name: Submit for App Review
+        if: inputs.submit
+        run: python3 ios/AppStore/asc.py submit "$BUNDLE_ID" "$ASC_KEY_PATH"
