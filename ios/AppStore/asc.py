@@ -114,22 +114,41 @@ def prepare(bundle_id, key_path):
     aid = app_id(c, bundle_id)
     v = editable_version(c, aid)
     vid, vstr = v["id"], v["attributes"]["versionString"]
-    print(f"version {vstr}: {v['attributes'].get('appVersionState') or v['attributes'].get('appStoreState')}")
+    print(f"version {vstr}: {v['attributes'].get('appVersionState') or v['attributes'].get('appStoreState')}", flush=True)
 
     # 1. newest processed build of this version
     build = None
-    for _ in range(40):          # up to 20 minutes for Apple to finish processing
-        builds = c.call("GET", "/v1/builds" + q({"filter[app]": aid, "filter[preReleaseVersion.version]": vstr,
-                                                  "sort": "-uploadedDate", "limit": 10}))["data"]
-        valid = [b for b in builds if b["attributes"].get("processingState") == "VALID" and not b["attributes"].get("expired")]
+    for attempt in range(40):    # up to 20 minutes for Apple to finish processing
+        page = c.call("GET", "/v1/builds" + q({"filter[app]": aid, "sort": "-uploadedDate", "limit": 20,
+                                                "include": "preReleaseVersion"}))
+        versions = {x["id"]: x["attributes"].get("version") for x in page.get("included", [])
+                    if x["type"] == "preReleaseVersions"}
+        builds = page["data"]
+        if attempt == 0:
+            print(f"builds in App Store Connect: {len(builds)}")
+            for b in builds:
+                pv = versions.get(((b.get("relationships") or {}).get("preReleaseVersion") or {}).get("data", {}).get("id"))
+                a = b["attributes"]
+                print(f"  {pv} ({a.get('version')}): {a.get('processingState')}, uploaded {a.get('uploadedDate')}"
+                      + (", expired" if a.get("expired") else ""), flush=True)
+        def ver(b):
+            return versions.get(((b.get("relationships") or {}).get("preReleaseVersion") or {}).get("data", {}).get("id"))
+        mine = [b for b in builds if ver(b) == vstr]
+        valid = [b for b in mine if b["attributes"].get("processingState") == "VALID" and not b["attributes"].get("expired")]
         if valid:
             build = valid[0]
             break
-        state = builds[0]["attributes"].get("processingState") if builds else "no builds yet"
-        print(f"waiting for the build to finish processing ({state})…")
+        if mine and all(b["attributes"].get("processingState") in ("INVALID", "FAILED") for b in mine):
+            print("::error::Apple rejected the uploaded build during processing: see the e-mail from App Store Connect",
+                  file=sys.stderr)
+            raise SystemExit(1)
+        if not mine and attempt >= 2:
+            print(f"::error::no uploaded build for version {vstr}: upload one (workflow with 'upload')", file=sys.stderr)
+            raise SystemExit(1)
+        print(f"waiting for the build to finish processing ({mine[0]['attributes'].get('processingState') if mine else 'not visible yet'})…", flush=True)
         time.sleep(30)
     if not build:
-        print("::error::no processed build for this version yet: run again later", file=sys.stderr)
+        print("::error::the build is still processing: run again later", file=sys.stderr)
         raise SystemExit(1)
     if build["attributes"].get("usesNonExemptEncryption") is None:
         c.call("PATCH", f"/v1/builds/{build['id']}", {"data": {"type": "builds", "id": build["id"],
